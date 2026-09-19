@@ -107,6 +107,18 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* Every button/link already has its own hover/active feedback (this file's
+   :focus-visible ring, Button's active:scale) - the browser's default gray
+   tap flash is redundant on top of that and reads as a glitch on a dark
+   theme. touch-action: manipulation drops the ~300ms double-tap-to-zoom
+   delay on controls that were never meant to be zoom targets. */
+button,
+a,
+[role='button'] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 ::selection {
   background-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
   color: var(--color-text);

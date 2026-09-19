@@ -96,7 +96,7 @@ export function ProfilePage() {
           ) : (
             <button type="button" onClick={() => setEditingName(true)} className="group flex items-center gap-2">
               <h1 className="text-xl font-bold text-text">{profile.displayName}</h1>
-              <Pencil className="h-3.5 w-3.5 text-text-subtle opacity-0 group-hover:opacity-100" />
+              <Pencil className="h-3.5 w-3.5 text-text-subtle opacity-100 lg:opacity-0 lg:group-hover:opacity-100" />
             </button>
           )}
           <p className="mt-1 text-sm text-text-subtle">

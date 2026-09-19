@@ -42,7 +42,7 @@ export function MediaCard({ summary, subtitle, className, showQuickActions = tru
         )}
 
         {showQuickActions && (
-          <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-1.5 bg-gradient-to-t from-black/80 to-transparent p-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-1.5 bg-gradient-to-t from-black/80 to-transparent p-2 opacity-100 transition-opacity duration-200 lg:opacity-0 lg:group-hover:opacity-100">
             <button
               type="button"
               aria-label={entry?.isFavorite ? 'Favorilerden çıkar' : 'Favorilere ekle'}
@@ -51,7 +51,7 @@ export function MediaCard({ summary, subtitle, className, showQuickActions = tru
                 toggleFavorite(summary)
               }}
               className={cn(
-                'flex h-8 w-8 items-center justify-center rounded-full backdrop-blur-sm transition-colors',
+                'flex h-9 w-9 items-center justify-center rounded-full backdrop-blur-sm transition-colors lg:h-8 lg:w-8',
                 entry?.isFavorite ? 'bg-accent text-accent-foreground' : 'bg-white/15 text-white hover:bg-white/25',
               )}
             >
@@ -65,7 +65,7 @@ export function MediaCard({ summary, subtitle, className, showQuickActions = tru
                 addToWatchlist(summary)
               }}
               className={cn(
-                'flex h-8 w-8 items-center justify-center rounded-full backdrop-blur-sm transition-colors',
+                'flex h-9 w-9 items-center justify-center rounded-full backdrop-blur-sm transition-colors lg:h-8 lg:w-8',
                 entry?.status === 'planned' ? 'bg-accent text-accent-foreground' : 'bg-white/15 text-white hover:bg-white/25',
               )}
             >
@@ -79,7 +79,7 @@ export function MediaCard({ summary, subtitle, className, showQuickActions = tru
                 markWatched(summary)
               }}
               className={cn(
-                'flex h-8 w-8 items-center justify-center rounded-full backdrop-blur-sm transition-colors',
+                'flex h-9 w-9 items-center justify-center rounded-full backdrop-blur-sm transition-colors lg:h-8 lg:w-8',
                 entry?.status === 'completed' ? 'bg-accent text-accent-foreground' : 'bg-white/15 text-white hover:bg-white/25',
               )}
             >
