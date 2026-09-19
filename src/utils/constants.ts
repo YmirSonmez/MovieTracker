@@ -25,3 +25,9 @@ export const DEMO_DATA_FLAG_KEY = 'movie-tracker-demo-loaded'
 /** Per-viewer "don't nag me again" flag for the Google Drive connect
  * banner - a convenience, not a source of truth (that's cloudSyncStore). */
 export const DRIVE_BANNER_DISMISSED_KEY = 'movie-tracker-drive-banner-dismissed'
+
+/** Caches the short-lived Google Drive access token (and the email it
+ * belongs to) across page reloads/tab closes, so re-visiting within its
+ * ~1 hour lifetime doesn't force reconnecting. Never contains a refresh
+ * token - the token this holds still expires exactly as fast either way. */
+export const DRIVE_TOKEN_STORAGE_KEY = 'movie-tracker-drive-token'

@@ -1,16 +1,21 @@
 import { useCloudSyncStore } from '@/store/cloudSyncStore'
 import { buildExportBundle, buildImportPreview, parseImportBundle } from '@/utils/exportImport'
+import { DRIVE_TOKEN_STORAGE_KEY } from '@/utils/constants'
 import type { ImportPreview, MovieTrackerExport } from '@/types/export'
 
 /**
  * Personal cloud backup via the visitor's own Google Drive - not a shared
  * backend. Everything here runs client-side (Google Identity Services'
  * implicit token flow), which is the only OAuth flow that works from a
- * static site with no server to hold a client secret. The access token it
- * grants lives in memory only (this module-level variable) for the current
- * tab/session; nothing about it is ever written to IndexedDB or the export
- * bundle. Scope is `drive.file`, so the app can only see files it created
- * itself - never the rest of the user's Drive.
+ * static site with no server to hold a client secret. Getting a refresh
+ * token (real, indefinite persistence) instead would need a server to hold
+ * a client secret - out of scope for a GitHub Pages-only deployment, so the
+ * access token this grants still expires in about an hour no matter what.
+ * What we *can* do without a backend: cache it in localStorage so revisiting
+ * within that hour (including after fully closing the tab) doesn't force
+ * reconnecting. Never written to IndexedDB or the export bundle, and never
+ * anything but this short-lived, `drive.file`-scoped token - the app can
+ * only ever see files it created itself, never the rest of the user's Drive.
  */
 
 const GIS_SCRIPT_SRC = 'https://accounts.google.com/gsi/client'
@@ -60,6 +65,57 @@ let scriptLoadPromise: Promise<void> | null = null
 let accessToken: string | null = null
 let tokenExpiresAt = 0
 
+interface StoredDriveToken {
+  accessToken: string
+  expiresAt: number
+  email: string | null
+}
+
+function persistToken(): void {
+  try {
+    if (!accessToken) {
+      localStorage.removeItem(DRIVE_TOKEN_STORAGE_KEY)
+      return
+    }
+    const stored: StoredDriveToken = {
+      accessToken,
+      expiresAt: tokenExpiresAt,
+      email: useCloudSyncStore.getState().connectedEmail,
+    }
+    localStorage.setItem(DRIVE_TOKEN_STORAGE_KEY, JSON.stringify(stored))
+  } catch {
+    // Private browsing / storage blocked - just means a reload loses the
+    // session like before, no worse than not having this at all.
+  }
+}
+
+/** Reads back a still-valid cached token, if any - called once at boot. */
+function restorePersistedToken(): void {
+  try {
+    const raw = localStorage.getItem(DRIVE_TOKEN_STORAGE_KEY)
+    if (!raw) return
+    const stored = JSON.parse(raw) as Partial<StoredDriveToken>
+    if (typeof stored.accessToken !== 'string' || typeof stored.expiresAt !== 'number') {
+      localStorage.removeItem(DRIVE_TOKEN_STORAGE_KEY)
+      return
+    }
+    if (Date.now() >= stored.expiresAt - 60_000) {
+      localStorage.removeItem(DRIVE_TOKEN_STORAGE_KEY)
+      return
+    }
+    accessToken = stored.accessToken
+    tokenExpiresAt = stored.expiresAt
+    useCloudSyncStore.getState().setConnectedEmail(stored.email ?? null)
+  } catch {
+    // Corrupted entry - behave as if nothing was cached.
+    try {
+      localStorage.removeItem(DRIVE_TOKEN_STORAGE_KEY)
+    } catch {
+      // Storage itself is inaccessible - nothing more to do.
+    }
+  }
+}
+
 function loadGisScript(): Promise<void> {
   if (window.google?.accounts?.oauth2) return Promise.resolve()
   if (scriptLoadPromise) return scriptLoadPromise
@@ -88,9 +144,12 @@ function loadGisScript(): Promise<void> {
  * initiated and kill it - surfacing as a bare "popup window closed" with no
  * other explanation. Called once at app boot so the script is already
  * loaded (or failed and retryable) long before anyone taps a Drive button.
+ * Also restores a still-valid cached token, so revisiting within its
+ * lifetime doesn't show the connect banner or ask to reconnect at all.
  */
 export function preloadGoogleIdentity(): void {
   if (!isGoogleDriveConfigured()) return
+  restorePersistedToken()
   void loadGisScript().catch(() => {
     // Ignored here - a real click later goes through ensureAccessToken()
     // again and surfaces the same error to the user properly.
@@ -159,6 +218,7 @@ async function ensureAccessToken(): Promise<string> {
   const token = await requestAccessToken()
   const email = await fetchUserEmail(token).catch(() => null)
   useCloudSyncStore.getState().setConnectedEmail(email)
+  persistToken()
   return token
 }
 
@@ -183,6 +243,7 @@ export function disconnectGoogleDrive(): void {
   accessToken = null
   tokenExpiresAt = 0
   useCloudSyncStore.getState().setConnectedEmail(null)
+  persistToken()
 }
 
 async function findBackupFileId(token: string): Promise<string | undefined> {
