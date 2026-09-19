@@ -28,6 +28,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
   theme: 'dark',
   compactLayout: false,
   autoMarkNextEpisode: false,
-  confirmBeforeMarkingWatched: true,
+  confirmBeforeMarkingWatched: false,
   dataMode: 'local',
 }

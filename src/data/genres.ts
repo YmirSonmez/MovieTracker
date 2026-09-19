@@ -30,6 +30,11 @@ export const TV_GENRES: Genre[] = [
 
 const ALL_GENRES = [...MOVIE_GENRES, ...TV_GENRES]
 
+/** Movie and TV genre ids overlap (Animation, Comedy, Crime, Drama,
+ * Mystery all appear in both TMDB lists) - deduped once here so every
+ * "all genres" UI (filters, profile picker) doesn't have to remember to. */
+export const ALL_GENRES_DEDUPED: Genre[] = [...new Map(ALL_GENRES.map((g) => [g.id, g])).values()]
+
 export function genreName(id: number): string {
   return ALL_GENRES.find((g) => g.id === id)?.name ?? 'Diğer'
 }

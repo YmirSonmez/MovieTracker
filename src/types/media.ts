@@ -38,6 +38,9 @@ export interface MediaSummary {
   year: number | null
   voteAverage: number | null
   genreIds: number[]
+  /** Movie runtime, or a show's average episode runtime - populated when
+   * available so Library can sort by it without re-fetching detail. */
+  runtimeMinutes?: number
 }
 
 export interface Episode {

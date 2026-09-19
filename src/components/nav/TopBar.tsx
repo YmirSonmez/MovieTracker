@@ -17,7 +17,7 @@ export function TopBar({ onOpenSearch }: TopBarProps) {
       <button
         type="button"
         onClick={onOpenSearch}
-        className="flex h-10 flex-1 items-center gap-2 rounded-full border border-border bg-surface px-4 text-sm text-text-subtle transition-colors hover:border-text-subtle/50 sm:max-w-sm"
+        className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-full border border-border bg-surface px-4 text-sm text-text-subtle transition-colors hover:border-text-subtle/50 sm:max-w-sm"
       >
         <Search className="h-4 w-4 shrink-0" />
         <span className="truncate">Film, dizi veya kişi ara...</span>

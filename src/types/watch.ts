@@ -40,6 +40,9 @@ export interface WatchRecord {
   /** Optional snapshot of how the user felt about this specific viewing;
    * the canonical, editable rating shown across the UI lives in Rating. */
   rating?: number
+  /** Captured from the detail page at watch time, so watch-time statistics
+   * never need to re-resolve a title's metadata later. */
+  runtimeMinutes?: number
 }
 
 /** One row per episode the user has ever interacted with. Re-marking an
@@ -52,6 +55,8 @@ export interface EpisodeProgress {
   episodeNumber: number
   watched: boolean
   watchedAt: string | null
+  /** Captured at mark-watched time, same rationale as WatchRecord. */
+  runtimeMinutes?: number
 }
 
 /** Current, editable rating for a title. 0.5 increments, 0.5 to 5. */

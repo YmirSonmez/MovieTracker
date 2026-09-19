@@ -1,6 +1,7 @@
 import { publicUrl } from '@/utils/publicUrl'
 import { genresFor } from '../genres'
-import type { CastMember, CrewMember, Episode, MediaSummary, MovieDetail, Person, Season, TVShowDetail, TVStatus } from '@/types/media'
+import type { CastMember, CrewMember, Episode, MovieDetail, Person, Season, TVShowDetail, TVStatus } from '@/types/media'
+export { toSummary } from '@/utils/media'
 
 function slugifyName(name: string): string {
   return name
@@ -140,9 +141,4 @@ export function buildShow(seed: ShowSeed): TVShowDetail {
     similar: [],
     recommendations: [],
   }
-}
-
-export function toSummary(detail: MovieDetail | TVShowDetail): MediaSummary {
-  const { id, mediaType, title, originalTitle, overview, posterPath, backdropPath, year, voteAverage, genreIds } = detail
-  return { id, mediaType, title, originalTitle, overview, posterPath, backdropPath, year, voteAverage, genreIds }
 }

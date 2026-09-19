@@ -71,6 +71,13 @@
   --text-subtle: #6f6f7a;
   --accent: #f0a93a;
   --accent-foreground: #191307;
+  /* Chart-only categorical pair (dataviz skill, validated against this
+     surface: CVD-adjacent ΔE 27.4, normal-vision ΔE 30.5, both >=3:1). A
+     step deeper than --accent because #f0a93a itself falls outside the
+     chart lightness band (too light to read as a solid mark). Never used
+     for UI chrome - only Recharts series fills. */
+  --chart-series-1: #c9820c;
+  --chart-series-2: #3987e5;
 }
 
 [data-theme='light'] {
@@ -84,6 +91,8 @@
   --text-subtle: #8a8a91;
   --accent: #d9860a;
   --accent-foreground: #fffaf0;
+  --chart-series-1: #c9820c;
+  --chart-series-2: #2a78d6;
 }
 
 * {

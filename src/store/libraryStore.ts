@@ -14,9 +14,9 @@ interface LibraryState {
   hydrate: () => Promise<void>
 
   getEntry: (mediaId: string) => LibraryEntry | undefined
-  markWatched: (mediaId: string, mediaType: MediaType, watchedAt?: string) => Promise<void>
+  markWatched: (mediaId: string, mediaType: MediaType, watchedAt?: string, runtimeMinutes?: number) => Promise<void>
   markUnwatched: (mediaId: string) => Promise<void>
-  rewatch: (mediaId: string, mediaType: MediaType, watchedAt?: string) => Promise<void>
+  rewatch: (mediaId: string, mediaType: MediaType, watchedAt?: string, runtimeMinutes?: number) => Promise<void>
   setWatching: (mediaId: string, mediaType: MediaType) => Promise<void>
   setDropped: (mediaId: string, mediaType: MediaType) => Promise<void>
   addToWatchlist: (mediaId: string, mediaType: MediaType, priority?: WatchlistPriority, note?: string) => Promise<void>
@@ -26,7 +26,7 @@ interface LibraryState {
   removeFromLibrary: (mediaId: string) => Promise<void>
 
   isEpisodeWatched: (showId: string, seasonNumber: number, episodeNumber: number) => boolean
-  markEpisodeWatched: (showId: string, seasonNumber: number, episodeNumber: number, watchedAt?: string) => Promise<void>
+  markEpisodeWatched: (showId: string, seasonNumber: number, episodeNumber: number, watchedAt?: string, runtimeMinutes?: number) => Promise<void>
   markEpisodeUnwatched: (showId: string, seasonNumber: number, episodeNumber: number) => Promise<void>
   markSeasonWatched: (showId: string, season: Season) => Promise<void>
   markAllEpisodesWatched: (showId: string, seasons: Season[]) => Promise<void>
@@ -61,7 +61,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     return get().entries[mediaId]
   },
 
-  async markWatched(mediaId, mediaType, watchedAt) {
+  async markWatched(mediaId, mediaType, watchedAt, runtimeMinutes) {
     const existing = get().entries[mediaId]
     const timestamp = now()
     const entry: LibraryEntry = existing
@@ -86,6 +86,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         mediaType,
         watchedAt: watchedAt ?? timestamp,
         isRewatch: false,
+        runtimeMinutes,
       }
       await storage.putWatchRecord(record)
       set((state) => ({ watchRecords: [...state.watchRecords, record] }))
@@ -114,7 +115,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
   },
 
-  async rewatch(mediaId, mediaType, watchedAt) {
+  async rewatch(mediaId, mediaType, watchedAt, runtimeMinutes) {
     const existing = get().entries[mediaId]
     const timestamp = now()
     const entry: LibraryEntry = existing
@@ -134,6 +135,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       mediaType,
       watchedAt: watchedAt ?? timestamp,
       isRewatch: true,
+      runtimeMinutes,
     }
     await Promise.all([storage.putLibraryEntry(entry), storage.putWatchRecord(record)])
     set((state) => ({
@@ -250,9 +252,17 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     return get().episodeProgress.some((p) => p.id === id && p.watched)
   },
 
-  async markEpisodeWatched(showId, seasonNumber, episodeNumber, watchedAt) {
+  async markEpisodeWatched(showId, seasonNumber, episodeNumber, watchedAt, runtimeMinutes) {
     const id = episodeProgressId(showId, seasonNumber, episodeNumber)
-    const progress: EpisodeProgress = { id, showId, seasonNumber, episodeNumber, watched: true, watchedAt: watchedAt ?? now() }
+    const progress: EpisodeProgress = {
+      id,
+      showId,
+      seasonNumber,
+      episodeNumber,
+      watched: true,
+      watchedAt: watchedAt ?? now(),
+      runtimeMinutes,
+    }
     await storage.putEpisodeProgress(progress)
     set((state) => ({ episodeProgress: [...state.episodeProgress.filter((p) => p.id !== id), progress] }))
   },
@@ -273,6 +283,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       episodeNumber: ep.episodeNumber,
       watched: true,
       watchedAt: timestamp,
+      runtimeMinutes: ep.runtime ?? undefined,
     }))
     await storage.putEpisodeProgressBatch(items)
     const ids = new Set(items.map((i) => i.id))
@@ -285,6 +296,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       season.episodes.map((ep) => ({
         id: episodeProgressId(showId, ep.seasonNumber, ep.episodeNumber),
         showId,
+        runtimeMinutes: ep.runtime ?? undefined,
         seasonNumber: ep.seasonNumber,
         episodeNumber: ep.episodeNumber,
         watched: true,

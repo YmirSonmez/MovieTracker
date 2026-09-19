@@ -24,6 +24,17 @@ export interface ShowCompletion {
   percent: number
 }
 
+export function getSeasonCompletion(season: Season, progress: EpisodeProgress[]): ShowCompletion {
+  const watchedIds = new Set(progress.filter((p) => p.watched).map((p) => p.id))
+  const watchedCount = season.episodes.filter((e) => watchedIds.has(episodeProgressId(e.showId, e.seasonNumber, e.episodeNumber))).length
+  const totalCount = season.episodes.length
+  return {
+    watchedCount,
+    totalCount,
+    percent: totalCount === 0 ? 0 : Math.round((watchedCount / totalCount) * 100),
+  }
+}
+
 export function getShowCompletion(seasons: Season[], progress: EpisodeProgress[]): ShowCompletion {
   const episodes = sortedEpisodes(seasons)
   const watchedIds = new Set(progress.filter((p) => p.watched).map((p) => p.id))

@@ -4,12 +4,21 @@ import { useListsStore } from '@/store/listsStore'
 import { useMediaCacheStore } from '@/store/mediaCacheStore'
 import { hydrateAllStores } from '@/store/init'
 import { storage } from '@/services/storage/repository'
-import { ALL_DETAILS, getTVDetail } from './catalog'
+import { ALL_DETAILS, getMovieDetail, getTVDetail } from './catalog'
 import { toSummary } from './catalog/builders'
 import { DEMO_DATA_FLAG_KEY } from '@/utils/constants'
 
 const movie = (slug: string) => `movie-demo-${slug}`
 const tv = (slug: string) => `tv-demo-${slug}`
+
+/** Spreads seeded activity across the last several months instead of
+ * clustering everything "now", so the Statistics charts look like a real
+ * viewing history on first load instead of one spike in the current month. */
+function daysAgo(n: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() - n)
+  return d.toISOString()
+}
 
 export function isDemoDataFlagSet(): boolean {
   try {
@@ -31,43 +40,63 @@ export async function loadDemoData(): Promise<void> {
 
   await useMediaCacheStore.getState().cache(ALL_DETAILS.map(toSummary))
 
-  const watchedMovies: Array<[string, number]> = [
-    [movie('shawshank-redemption'), 5],
-    [movie('the-dark-knight'), 5],
-    [movie('parasite'), 4.5],
-    [movie('inception'), 4.5],
-    [movie('pulp-fiction'), 4.5],
-    [movie('whiplash'), 4],
-    [movie('get-out'), 4],
-    [movie('la-la-land'), 3.5],
-    [movie('coco'), 4],
-    [movie('gone-girl'), 4],
+  const watchedMovies: Array<[string, number, number]> = [
+    [movie('shawshank-redemption'), 5, 150],
+    [movie('the-dark-knight'), 5, 130],
+    [movie('parasite'), 4.5, 110],
+    [movie('inception'), 4.5, 95],
+    [movie('pulp-fiction'), 4.5, 80],
+    [movie('whiplash'), 4, 60],
+    [movie('get-out'), 4, 45],
+    [movie('la-la-land'), 3.5, 30],
+    [movie('coco'), 4, 15],
+    [movie('gone-girl'), 4, 3],
   ]
-  for (const [id, rating] of watchedMovies) {
-    await lib.markWatched(id, 'movie')
+  for (const [id, rating, offset] of watchedMovies) {
+    const runtime = getMovieDetail(id)?.runtime ?? undefined
+    await lib.markWatched(id, 'movie', daysAgo(offset), runtime)
     await ratings.setRating(id, 'movie', rating)
   }
 
   const breakingBad = getTVDetail(tv('breaking-bad'))
   if (breakingBad) {
-    await lib.markSeasonWatched(breakingBad.id, breakingBad.seasons[0])
-    await lib.markSeasonWatched(breakingBad.id, breakingBad.seasons[1])
-    for (let e = 1; e <= 6; e++) await lib.markEpisodeWatched(breakingBad.id, 3, e)
+    for (const [seasonIndex, startOffset] of [
+      [0, 146],
+      [1, 122],
+    ] as const) {
+      const season = breakingBad.seasons[seasonIndex]
+      for (const ep of season.episodes) {
+        await lib.markEpisodeWatched(breakingBad.id, season.seasonNumber, ep.episodeNumber, daysAgo(startOffset - ep.episodeNumber), ep.runtime ?? undefined)
+      }
+    }
+    for (let e = 1; e <= 6; e++) {
+      const runtime = breakingBad.seasons[2]?.episodes[e - 1]?.runtime ?? undefined
+      await lib.markEpisodeWatched(breakingBad.id, 3, e, daysAgo(20 - e * 2), runtime)
+    }
     await lib.syncShowStatusFromProgress(breakingBad.id, breakingBad.seasons)
     await ratings.setRating(breakingBad.id, 'tv', 5)
   }
 
   const office = getTVDetail(tv('the-office'))
   if (office) {
-    await lib.markSeasonWatched(office.id, office.seasons[0])
-    for (let e = 1; e <= 14; e++) await lib.markEpisodeWatched(office.id, 5, e)
+    const s1 = office.seasons[0]
+    for (const ep of s1.episodes) {
+      await lib.markEpisodeWatched(office.id, s1.seasonNumber, ep.episodeNumber, daysAgo(90 - ep.episodeNumber), ep.runtime ?? undefined)
+    }
+    for (let e = 1; e <= 14; e++) {
+      const runtime = office.seasons[1]?.episodes[e - 1]?.runtime ?? undefined
+      await lib.markEpisodeWatched(office.id, 5, e, daysAgo(58 - e * 4), runtime)
+    }
     await lib.syncShowStatusFromProgress(office.id, office.seasons)
     await ratings.setRating(office.id, 'tv', 4.5)
   }
 
   const strangerThings = getTVDetail(tv('stranger-things'))
   if (strangerThings) {
-    for (let e = 1; e <= 3; e++) await lib.markEpisodeWatched(strangerThings.id, 1, e)
+    for (let e = 1; e <= 3; e++) {
+      const runtime = strangerThings.seasons[0]?.episodes[e - 1]?.runtime ?? undefined
+      await lib.markEpisodeWatched(strangerThings.id, 1, e, daysAgo(4 - e), runtime)
+    }
     await lib.syncShowStatusFromProgress(strangerThings.id, strangerThings.seasons)
   }
 
