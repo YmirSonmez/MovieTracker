@@ -43,6 +43,7 @@ export function RatingReviewCard({ mediaId, mediaType }: { mediaId: string; medi
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               placeholder="Bu yapım hakkında ne düşünüyorsun? (opsiyonel)"
+              aria-label="Notun"
               rows={3}
             />
             <div className="flex gap-2">

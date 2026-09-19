@@ -56,6 +56,7 @@ export function TmdbKeyField() {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder="TMDB API anahtarı (v3)"
+            aria-label="TMDB API anahtarı"
             className="w-56 pr-9"
             autoComplete="off"
           />

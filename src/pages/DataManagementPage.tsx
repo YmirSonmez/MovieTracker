@@ -174,6 +174,9 @@ export function DataManagementPage() {
         </h2>
 
         <div
+          role="button"
+          tabIndex={0}
+          aria-label="Yedek dosyası seç"
           onDragOver={(e) => {
             e.preventDefault()
             setDragOver(true)
@@ -186,7 +189,13 @@ export function DataManagementPage() {
             if (file) handleFile(file)
           }}
           onClick={() => fileInputRef.current?.click()}
-          className={`flex cursor-pointer flex-col items-center gap-2 rounded-md border border-dashed p-8 text-center transition-colors ${
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              fileInputRef.current?.click()
+            }
+          }}
+          className={`flex cursor-pointer flex-col items-center gap-2 rounded-md border border-dashed p-8 text-center transition-colors focus-visible:border-accent ${
             dragOver ? 'border-accent bg-accent/5' : 'border-border hover:border-text-subtle'
           }`}
         >

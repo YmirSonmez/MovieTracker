@@ -27,7 +27,9 @@ export function DetailHero({
   return (
     <div className="flex flex-col">
       <div className="relative h-56 w-full overflow-hidden rounded-md bg-surface-2 sm:h-72 lg:h-80">
-        {backdropPath && <img src={backdropPath} alt="" className="h-full w-full object-cover" />}
+        {backdropPath && (
+          <img src={backdropPath} alt="" fetchPriority="high" className="h-full w-full object-cover" />
+        )}
         {/* from-35% keeps the bottom third fully opaque - deep enough to fully
             cover the poster's overlap band below (see -mt-16/-mt-20 on the
             row underneath), so nothing in the backdrop (a caption baked into

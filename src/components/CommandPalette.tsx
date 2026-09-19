@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import * as Dialog from '@radix-ui/react-dialog'
 import { BarChart3, Bookmark, Compass, Library, Search } from 'lucide-react'
 import { Z_INDEX } from '@/utils/constants'
@@ -39,7 +39,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm" style={{ zIndex: Z_INDEX.modalOverlay }} />
         <Dialog.Content
-          className="fixed left-1/2 top-[12vh] w-[min(92vw,34rem)] -translate-x-1/2 overflow-hidden rounded-md border border-border bg-surface shadow-2xl"
+          className="fixed left-1/2 top-[12vh] w-[min(92vw,34rem)] -translate-x-1/2 overflow-hidden overscroll-contain rounded-md border border-border bg-surface shadow-2xl"
           style={{ zIndex: Z_INDEX.commandPalette }}
           aria-describedby={undefined}
         >
@@ -49,14 +49,15 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               e.preventDefault()
               goToSearch()
             }}
-            className="flex items-center gap-3 border-b border-border px-4"
+            className="flex items-center gap-3 border-b border-border px-4 focus-within:border-accent"
           >
             <Search className="h-4 w-4 shrink-0 text-text-subtle" />
             <input
               ref={inputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Film, dizi ara..."
+              placeholder="Film, dizi ara…"
+              aria-label="Film, dizi ara"
               className="h-14 flex-1 bg-transparent text-sm text-text outline-none placeholder:text-text-subtle"
             />
             <kbd className="hidden shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-text-subtle sm:block">esc</kbd>
@@ -64,18 +65,15 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           <div className="p-2">
             <p className="px-2 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-text-subtle">Hızlı erişim</p>
             {QUICK_LINKS.map((link) => (
-              <button
+              <Link
                 key={link.path}
-                type="button"
-                onClick={() => {
-                  onOpenChange(false)
-                  navigate(link.path)
-                }}
+                to={link.path}
+                onClick={() => onOpenChange(false)}
                 className="flex w-full items-center gap-3 rounded-sm px-3 py-2.5 text-left text-sm text-text transition-colors hover:bg-surface-2"
               >
                 <link.icon className="h-4 w-4 text-text-subtle" />
                 {link.label}
-              </button>
+              </Link>
             ))}
           </div>
         </Dialog.Content>

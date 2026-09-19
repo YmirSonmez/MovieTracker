@@ -24,7 +24,7 @@ export function Modal({ open, onOpenChange, title, description, children, footer
         />
         <Dialog.Content
           className={cn(
-            'fixed left-1/2 top-1/2 w-[min(92vw,32rem)] -translate-x-1/2 -translate-y-1/2 rounded-md border border-border bg-surface p-6 shadow-2xl',
+            'fixed left-1/2 top-1/2 w-[min(92vw,32rem)] -translate-x-1/2 -translate-y-1/2 overscroll-contain rounded-md border border-border bg-surface p-6 shadow-2xl',
             'data-[state=open]:animate-[scale-in_150ms_ease-out] data-[state=closed]:animate-[scale-out_150ms_ease-in]',
             className,
           )}

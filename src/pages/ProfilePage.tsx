@@ -82,7 +82,7 @@ export function ProfilePage() {
         <div className="min-w-0 flex-1">
           {editingName ? (
             <div className="flex items-center gap-2">
-              <Input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} className="max-w-xs" />
+              <Input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} aria-label="Görünen ad" className="max-w-xs" />
               <Button
                 size="sm"
                 onClick={() => {

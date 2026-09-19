@@ -62,7 +62,7 @@ export function AddToListDialog({ open, onOpenChange, mediaId, mediaTitle }: Add
           createAndAdd()
         }}
       >
-        <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Yeni liste adı" className="flex-1" />
+        <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Yeni liste adı" aria-label="Yeni liste adı" className="flex-1" />
         <Button type="submit" size="md" variant="outline" disabled={!newName.trim()}>
           <Plus className="h-4 w-4" /> Oluştur
         </Button>

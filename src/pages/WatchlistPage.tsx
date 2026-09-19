@@ -57,7 +57,7 @@ function WatchlistRow({
 
         {editingNote ? (
           <div className="flex flex-col gap-2">
-            <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Kısa bir not (opsiyonel)" />
+            <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Kısa bir not (opsiyonel)" aria-label="Not" />
             <div className="flex gap-2">
               <Button
                 size="sm"

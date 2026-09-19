@@ -69,7 +69,13 @@ export function SearchPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-subtle" />
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Film, dizi veya kişi ara..." className="pl-10" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Film, dizi veya kişi ara…"
+            aria-label="Film, dizi veya kişi ara"
+            className="pl-10"
+          />
         </div>
         {hasAnyResults && (
           <Select

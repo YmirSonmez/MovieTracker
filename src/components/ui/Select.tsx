@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import * as RadixSelect from '@radix-ui/react-select'
 import { Check, ChevronDown } from 'lucide-react'
 import { cn } from '@/utils/cn'
@@ -19,13 +20,19 @@ interface SelectProps {
 }
 
 export function Select({ value, onValueChange, options, placeholder, label, className, size = 'md' }: SelectProps) {
+  const labelId = useId()
   return (
     <div className="flex flex-col gap-2">
-      {label && <span className="text-sm font-medium text-text">{label}</span>}
+      {label && (
+        <span id={labelId} className="text-sm font-medium text-text">
+          {label}
+        </span>
+      )}
       <RadixSelect.Root value={value} onValueChange={onValueChange}>
         <RadixSelect.Trigger
+          aria-labelledby={label ? labelId : undefined}
           className={cn(
-            'inline-flex items-center justify-between gap-2 rounded-md border border-border bg-surface px-3.5 text-sm text-text outline-none transition-colors focus:border-accent data-[placeholder]:text-text-subtle',
+            'inline-flex items-center justify-between gap-2 rounded-md border border-border bg-surface px-3.5 text-sm text-text outline-none transition-colors focus-visible:border-accent data-[placeholder]:text-text-subtle',
             size === 'sm' ? 'h-8 px-3 text-xs' : 'h-10',
             className,
           )}

@@ -11,7 +11,7 @@ interface FieldChrome {
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement>, FieldChrome {}
 
 const fieldClasses =
-  'w-full rounded-md border border-border bg-surface px-3.5 py-2.5 text-sm text-text placeholder:text-text-subtle outline-none transition-colors focus:border-accent disabled:cursor-not-allowed disabled:opacity-50'
+  'w-full rounded-md border border-border bg-surface px-3.5 py-2.5 text-sm text-text placeholder:text-text-subtle outline-none transition-colors focus-visible:border-accent disabled:cursor-not-allowed disabled:opacity-50'
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ className, label, helperText, error, id, ...props }, ref) => {
