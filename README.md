@@ -111,6 +111,7 @@ Ayarlar'daki **Google Drive yedekleme**, kullanıcının kendi Google hesabına 
 - İstenen kapsam yalnızca `drive.file`: uygulama **sadece kendi oluşturduğu** `movie-tracker-backup.json` dosyasını görebilir, kullanıcının Drive'ındaki başka hiçbir dosyaya erişemez.
 - Erişim jetonu yalnızca bellekte (sekme/oturum ömrü boyunca) tutulur; hiçbir zaman IndexedDB'ye ya da dışa aktarılan bir yedeğe yazılmaz. Jeton süresi dolduğunda (~1 saat) bir sonraki yedekleme/geri yükleme işleminde Google tekrar kısa bir onay ister.
 - Yedekleme, aynı `buildExportBundle()`/`applyImport()` mantığını (yerel JSON dışa/içe aktarmayla birebir aynı format ve birleştir/değiştir onay ekranı) kullanır — iki yol da tek bir koddan geçer.
+- Bağlandıktan sonra **elle yedekle demene gerek kalmaz**: kitaplık/puan/liste/profil değişiklikleri birkaç saniye içinde otomatik olarak (debounce'lu, sessizce) Drive'a yedeklenir (`src/services/autoSync.ts`). Erişim jetonu ~1 saat sonra sona erdiğinde ve tarayıcı (haklı olarak) bir tıklama olmadan açılan bir OAuth penceresini engellediğinde, uygulama sessizce başarısız olmak yerine tek seferlik, düşük profilli bir bildirim gösterir: "Google Drive bağlantısı yenilenmeli" + **Yeniden Bağlan** düğmesi (gerçek bir tıklama olduğu için engellenmez).
 
 **Etkinleştirmek için (repo sahibi, tek seferlik):**
 

@@ -139,7 +139,8 @@ export function DataManagementPage() {
           </h2>
           <p className="text-sm text-text-muted">
             Verilerini kendi Google Drive hesabındaki tek bir dosyaya (yalnızca bu uygulamanın erişebildiği) yedekle ya da oradan
-            geri yükle. Hiçbir veri bizim bir sunucumuzdan geçmez.
+            geri yükle. Hiçbir veri bizim bir sunucumuzdan geçmez. Bir kere bağlandıktan sonra her değişiklik bu oturum boyunca
+            otomatik olarak yedeklenir - aşağıdaki düğmeler yalnızca elle bir seferlik işlem için gerekir.
           </p>
           {lastSyncedAt && (
             <p className="text-xs text-text-subtle">Son yedekleme: {new Date(lastSyncedAt).toLocaleString('tr-TR')}</p>

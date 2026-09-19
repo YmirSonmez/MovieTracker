@@ -132,6 +132,13 @@ export async function connectGoogleDrive(): Promise<{ email: string | null }> {
   return { email: useCloudSyncStore.getState().connectedEmail }
 }
 
+/** Whether a live, unexpired token is already held in memory - lets a
+ * caller (autoSync) skip a doomed silent reconnect attempt instead of
+ * triggering a popup that the browser will block outside a click handler. */
+export function hasValidDriveToken(): boolean {
+  return Boolean(accessToken) && Date.now() < tokenExpiresAt - 60_000
+}
+
 export function disconnectGoogleDrive(): void {
   if (accessToken && window.google) {
     window.google.accounts.oauth2.revoke(accessToken, () => {})

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useCloudSyncStore } from '@/store/cloudSyncStore'
-import { connectGoogleDrive, disconnectGoogleDrive, isGoogleDriveConfigured, GoogleDriveError } from '@/services/googleDrive'
+import { connectGoogleDrive, disconnectGoogleDrive, backupToDrive, isGoogleDriveConfigured, GoogleDriveError } from '@/services/googleDrive'
 import { toast } from '@/store/toastStore'
 import { Badge, Button } from '@/components/ui'
 import { SettingsRow } from './SettingsRow'
@@ -25,7 +25,8 @@ export function GoogleDriveSyncRow() {
     setConnecting(true)
     try {
       const { email } = await connectGoogleDrive()
-      toast({ title: 'Google Drive bağlandı', description: email ?? undefined, variant: 'success' })
+      await backupToDrive()
+      toast({ title: 'Google Drive bağlandı', description: email ? `${email} - ilk yedeğin alındı.` : 'İlk yedeğin alındı.', variant: 'success' })
     } catch (e) {
       toast({ title: 'Bağlantı başarısız oldu', description: e instanceof GoogleDriveError ? e.message : undefined, variant: 'danger' })
     } finally {
@@ -39,10 +40,10 @@ export function GoogleDriveSyncRow() {
   }
 
   const description = connectedEmail
-    ? `Bağlı: ${connectedEmail} - yedekle/geri yükle işlemleri için Veri Yönetimi'ne git.`
+    ? `Bağlı: ${connectedEmail} - değişikliklerin otomatik olarak yedekleniyor, elle bir şey yapman gerekmez.`
     : lastSyncedAt
-      ? `Son senkron: ${new Date(lastSyncedAt).toLocaleString('tr-TR')}. Devam etmek için yeniden bağlan.`
-      : 'Verilerini kendi Google Drive hesabına otomatik yedekle - hesabına başka kimse erişemez.'
+      ? `Son senkron: ${new Date(lastSyncedAt).toLocaleString('tr-TR')}. Otomatik yedeklemenin devam etmesi için yeniden bağlan.`
+      : 'Bağlandığında değişikliklerin otomatik olarak yedeklenir - bir daha elle "yedekle" demen gerekmez.'
 
   return (
     <SettingsRow

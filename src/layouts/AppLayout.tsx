@@ -11,6 +11,7 @@ import { hydrateAllStores } from '@/store/init'
 import { useProfileStore } from '@/store/profileStore'
 import { applyTheme, watchSystemTheme } from '@/utils/theme'
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts'
+import { startAutoSync } from '@/services/autoSync'
 
 export function AppLayout() {
   const [ready, setReady] = useState(false)
@@ -19,7 +20,10 @@ export function AppLayout() {
   useEffect(() => {
     let cancelled = false
     hydrateAllStores().then(() => {
-      if (!cancelled) setReady(true)
+      if (!cancelled) {
+        setReady(true)
+        startAutoSync()
+      }
     })
     return () => {
       cancelled = true
