@@ -5,6 +5,7 @@ import { Sidebar } from '@/components/nav/Sidebar'
 import { BottomNav } from '@/components/nav/BottomNav'
 import { BootSplash } from '@/components/nav/BootSplash'
 import { CommandPalette } from '@/components/CommandPalette'
+import { GoogleDriveConnectBanner } from '@/components/GoogleDriveConnectBanner'
 import { Toaster } from '@/components/ui'
 import { hydrateAllStores } from '@/store/init'
 import { useProfileStore } from '@/store/profileStore'
@@ -43,6 +44,7 @@ export function AppLayout() {
           <Sidebar />
         </div>
         <main className="min-w-0 flex-1 pb-6">
+          <GoogleDriveConnectBanner />
           <Outlet />
         </main>
       </div>
