@@ -31,12 +31,20 @@ jobs:
         run: npm ci
 
       - name: Build
-        # VITE_TMDB_API_KEY is optional - without it the app runs entirely on
-        # its bundled offline demo catalog. Add a repository secret named
-        # TMDB_API_KEY (Settings -> Secrets and variables -> Actions) to
-        # enable live TMDB data instead. See README for details.
+        # Both keys are optional - without them the app runs entirely on its
+        # bundled offline demo catalog and Google Drive backup stays hidden.
+        #
+        # - TMDB_API_KEY: a repository *secret* (Settings -> Secrets and
+        #   variables -> Actions -> Secrets). Enables live TMDB data for
+        #   every visitor by default; a visitor can still override it with
+        #   their own key from Settings.
+        # - GOOGLE_CLIENT_ID: a repository *variable* (same page, Variables
+        #   tab), not a secret - OAuth client IDs for browser apps are
+        #   public by design and safe to expose in the built bundle. Enables
+        #   the "Google Drive'a Yedekle" feature. See README for setup steps.
         env:
           VITE_TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
         run: npm run build
 
       - name: Upload build artifact

@@ -1,17 +1,24 @@
 import { Link } from 'react-router-dom'
 import { CheckCircle2, Database, Download, XCircle } from 'lucide-react'
 import { useProfileStore } from '@/store/profileStore'
+import { useApiConfigStore } from '@/store/apiConfigStore'
 import { applyTheme } from '@/utils/theme'
 import { isLiveDataConfigured } from '@/services'
 import { useInstallPrompt } from '@/hooks/useInstallPrompt'
 import { ROUTES } from '@/utils/routes'
 import { Badge, Button, Select, Switch } from '@/components/ui'
 import { SettingsRow, SettingsSection } from '@/components/settings/SettingsRow'
+import { TmdbKeyField } from '@/components/settings/TmdbKeyField'
+import { GoogleDriveSyncRow } from '@/components/settings/GoogleDriveSyncRow'
 import type { ThemePreference } from '@/types/user'
 
 export function SettingsPage() {
   const settings = useProfileStore((s) => s.settings)
   const updateSettings = useProfileStore((s) => s.updateSettings)
+  // Subscribing to the personal key directly makes this component re-render
+  // when it changes, so the badge below (driven by isLiveDataConfigured())
+  // reflects the latest value instead of the one captured at first render.
+  useApiConfigStore((s) => s.config.tmdbApiKey)
   const liveData = isLiveDataConfigured()
   const { canInstall, promptInstall } = useInstallPrompt()
 
@@ -84,6 +91,7 @@ export function SettingsPage() {
             </Badge>
           }
         />
+        <TmdbKeyField />
         <SettingsRow
           title="Dışa/içe aktarma ve yedekleme"
           description="Kitaplığını JSON/CSV olarak indir ya da geri yükle"
@@ -103,16 +111,16 @@ export function SettingsPage() {
           description="Verilerin yalnızca bu tarayıcıda, cihazında saklanıyor."
           control={<Badge variant="accent">Yerel</Badge>}
         />
-        <SettingsRow
-          title="Bulut senkronizasyonu"
-          description="Google Drive / Supabase gibi bir bulut yedeği - mimari hazır, henüz bağlı değil."
-          control={<Badge variant="neutral">Yakında</Badge>}
-        />
+        <GoogleDriveSyncRow />
       </SettingsSection>
 
       <SettingsSection title="Gizlilik">
-        <div className="py-3 text-sm text-text-muted">
-          Movie Tracker hiçbir kişisel verini sunucuya göndermez. Her şey bu tarayıcının yerel deposunda (IndexedDB) tutulur.
+        <div className="flex flex-col gap-1.5 py-3 text-sm text-text-muted">
+          <p>Movie Tracker&apos;ın kendi bir sunucusu yoktur. Her şey bu tarayıcının yerel deposunda (IndexedDB) tutulur.</p>
+          <p>
+            Kendi isteğinle bağladığında veri yalnızca doğrudan iki yere gider: film/dizi bilgisi için TMDB&apos;ye, yedekleme
+            için ise kendi Google Drive hesabına - ikisi de bizim değil senin bağlantın.
+          </p>
         </div>
         <SettingsRow
           title="Yerel veriyi temizle"

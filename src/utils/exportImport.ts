@@ -3,6 +3,7 @@ import { useRatingsStore } from '@/store/ratingsStore'
 import { useListsStore } from '@/store/listsStore'
 import { useProfileStore } from '@/store/profileStore'
 import { useMediaCacheStore } from '@/store/mediaCacheStore'
+import { useApiConfigStore } from '@/store/apiConfigStore'
 import { storage } from '@/services/storage/repository'
 import { hydrateAllStores } from '@/store/init'
 import { EXPORT_SCHEMA_VERSION } from '@/utils/constants'
@@ -14,12 +15,14 @@ export function buildExportBundle(): MovieTrackerExport {
   const lists = useListsStore.getState()
   const profileState = useProfileStore.getState()
   const mediaCache = useMediaCacheStore.getState()
+  const apiConfigState = useApiConfigStore.getState()
 
   return {
     version: EXPORT_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     profile: profileState.profile,
     settings: profileState.settings,
+    apiConfig: apiConfigState.config,
     libraryEntries: Object.values(library.entries),
     watchRecords: library.watchRecords,
     episodeProgress: library.episodeProgress,
@@ -102,13 +105,15 @@ export function parseImportBundle(raw: string): MovieTrackerExport {
   if (bundle.version > EXPORT_SCHEMA_VERSION) {
     throw new ImportValidationError('Bu yedek, uygulamanın daha yeni bir sürümünden alınmış. Lütfen uygulamayı güncelle.')
   }
-  // version 1 is the only shape so far - future migrations slot in here,
-  // keyed off bundle.version, before returning.
+  // v1 backups have no apiConfig field at all - default it to empty rather
+  // than fail the import. Future migrations slot in here, keyed off
+  // bundle.version, before returning.
   return {
     version: bundle.version,
     exportedAt: bundle.exportedAt ?? new Date().toISOString(),
     profile: bundle.profile as MovieTrackerExport['profile'],
     settings: bundle.settings as MovieTrackerExport['settings'],
+    apiConfig: bundle.apiConfig ?? {},
     libraryEntries: bundle.libraryEntries ?? [],
     watchRecords: bundle.watchRecords ?? [],
     episodeProgress: bundle.episodeProgress ?? [],
@@ -124,6 +129,7 @@ export function buildImportPreview(bundle: MovieTrackerExport): ImportPreview {
   return {
     version: bundle.version,
     isSupported: bundle.version <= EXPORT_SCHEMA_VERSION,
+    containsApiKey: Boolean(bundle.apiConfig?.tmdbApiKey),
     counts: {
       libraryEntries: bundle.libraryEntries.length,
       watchRecords: bundle.watchRecords.length,
@@ -149,6 +155,7 @@ export async function applyImport(bundle: MovieTrackerExport, strategy: ImportSt
       mediaCache: bundle.mediaCache,
       profile: bundle.profile,
       settings: bundle.settings,
+      apiConfig: bundle.apiConfig,
     })
   } else {
     await Promise.all([
@@ -160,6 +167,9 @@ export async function applyImport(bundle: MovieTrackerExport, strategy: ImportSt
       ...bundle.favoritePeople.map((f) => storage.putFavoritePerson(f)),
       ...bundle.lists.map((l) => storage.putList(l)),
       storage.cacheMedia(bundle.mediaCache),
+      // A merge never erases an existing personal key with an absent one -
+      // only apply it when the backup actually carried one.
+      ...(bundle.apiConfig?.tmdbApiKey ? [storage.putApiConfig(bundle.apiConfig)] : []),
     ])
   }
   await hydrateAllStores()

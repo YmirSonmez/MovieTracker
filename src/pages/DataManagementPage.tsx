@@ -1,10 +1,12 @@
 import { useRef, useState } from 'react'
-import { AlertTriangle, Download, Sparkles, Trash2, Upload } from 'lucide-react'
+import { AlertTriangle, CloudDownload, CloudUpload, Download, KeyRound, Sparkles, Trash2, Upload } from 'lucide-react'
 import { useLibraryStore } from '@/store/libraryStore'
 import { useRatingsStore } from '@/store/ratingsStore'
 import { useListsStore } from '@/store/listsStore'
+import { useCloudSyncStore } from '@/store/cloudSyncStore'
 import { loadDemoData, clearDemoData } from '@/data/demoSeed'
 import { toast } from '@/store/toastStore'
+import { backupToDrive, restoreFromDrive, isGoogleDriveConfigured, GoogleDriveError } from '@/services/googleDrive'
 import {
   buildExportBundle,
   buildImportPreview,
@@ -14,7 +16,7 @@ import {
   parseImportBundle,
   ImportValidationError,
 } from '@/utils/exportImport'
-import { Button, Card, ConfirmDialog } from '@/components/ui'
+import { Badge, Button, Card, ConfirmDialog } from '@/components/ui'
 import type { ImportPreview, ImportStrategy, MovieTrackerExport } from '@/types/export'
 
 export function DataManagementPage() {
@@ -22,15 +24,19 @@ export function DataManagementPage() {
   const watchRecords = useLibraryStore((s) => s.watchRecords)
   const ratings = useRatingsStore((s) => s.ratings)
   const lists = useListsStore((s) => s.lists)
+  const lastSyncedAt = useCloudSyncStore((s) => s.meta.lastSyncedAt)
+  const driveConfigured = isGoogleDriveConfigured()
 
   const [importBundle, setImportBundle] = useState<MovieTrackerExport | null>(null)
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
+  const [importSource, setImportSource] = useState<'file' | 'drive'>('file')
   const [strategy, setStrategy] = useState<ImportStrategy>('merge')
   const [confirmImportOpen, setConfirmImportOpen] = useState(false)
   const [confirmWipeOpen, setConfirmWipeOpen] = useState(false)
   const [importing, setImporting] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [drivePending, setDrivePending] = useState<'backup' | 'restore' | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const libraryCount = Object.keys(entries).length
@@ -40,6 +46,7 @@ export function DataManagementPage() {
     setImportError(null)
     setImportBundle(null)
     setImportPreview(null)
+    setImportSource('file')
     try {
       const text = await file.text()
       const bundle = parseImportBundle(text)
@@ -62,6 +69,33 @@ export function DataManagementPage() {
       toast({ title: 'İçe aktarma başarısız oldu', variant: 'danger' })
     } finally {
       setImporting(false)
+    }
+  }
+
+  async function handleDriveBackup() {
+    setDrivePending('backup')
+    try {
+      await backupToDrive()
+      toast({ title: 'Google Drive’a yedeklendi', variant: 'success' })
+    } catch (e) {
+      toast({ title: 'Yedekleme başarısız oldu', description: e instanceof GoogleDriveError ? e.message : undefined, variant: 'danger' })
+    } finally {
+      setDrivePending(null)
+    }
+  }
+
+  async function handleDriveRestore() {
+    setDrivePending('restore')
+    setImportError(null)
+    try {
+      const { bundle, preview } = await restoreFromDrive()
+      setImportSource('drive')
+      setImportBundle(bundle)
+      setImportPreview(preview)
+    } catch (e) {
+      toast({ title: 'Geri yükleme başarısız oldu', description: e instanceof GoogleDriveError ? e.message : undefined, variant: 'danger' })
+    } finally {
+      setDrivePending(null)
     }
   }
 
@@ -91,7 +125,35 @@ export function DataManagementPage() {
           JSON dosyası her şeyi içerir (profil, kitaplık, izleme geçmişi, puanlar, notlar, listeler, ayarlar) ve tam yedek/geri
           yükleme için kullanılır. CSV, kitaplığının basit bir tablo görünümüdür.
         </p>
+        <p className="flex items-start gap-2 text-xs text-warning">
+          <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          Kendi TMDB anahtarını girdiysen JSON dosyasına da dahil edilir - bu dosyayı kimseyle paylaşma veya herkese açık bir
+          depoya yükleme.
+        </p>
       </Card>
+
+      {driveConfigured && (
+        <Card className="flex flex-col gap-4 p-5">
+          <h2 className="flex items-center gap-2 font-semibold text-text">
+            <CloudUpload className="h-4 w-4 text-accent" /> Google Drive Yedekleme
+          </h2>
+          <p className="text-sm text-text-muted">
+            Verilerini kendi Google Drive hesabındaki tek bir dosyaya (yalnızca bu uygulamanın erişebildiği) yedekle ya da oradan
+            geri yükle. Hiçbir veri bizim bir sunucumuzdan geçmez.
+          </p>
+          {lastSyncedAt && (
+            <p className="text-xs text-text-subtle">Son yedekleme: {new Date(lastSyncedAt).toLocaleString('tr-TR')}</p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={handleDriveBackup} loading={drivePending === 'backup'} disabled={drivePending !== null}>
+              <CloudUpload className="h-4 w-4" /> Şimdi Yedekle
+            </Button>
+            <Button variant="outline" onClick={handleDriveRestore} loading={drivePending === 'restore'} disabled={drivePending !== null}>
+              <CloudDownload className="h-4 w-4" /> Drive'dan Geri Yükle
+            </Button>
+          </div>
+        </Card>
+      )}
 
       <Card className="flex flex-col gap-4 p-5">
         <h2 className="flex items-center gap-2 font-semibold text-text">
@@ -134,7 +196,11 @@ export function DataManagementPage() {
 
         {importPreview && (
           <div className="flex flex-col gap-4 rounded-md border border-border p-4">
-            <p className="text-sm font-medium text-text">Yedek tespit edildi · Sürüm {importPreview.version}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-medium text-text">Yedek tespit edildi · Sürüm {importPreview.version}</p>
+              <Badge variant="neutral">{importSource === 'drive' ? 'Google Drive' : 'Dosya'}</Badge>
+              {importPreview.containsApiKey && <Badge variant="warning">TMDB anahtarı içeriyor</Badge>}
+            </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Stat label="Kitaplık" value={importPreview.counts.libraryEntries} />
               <Stat label="İzleme kaydı" value={importPreview.counts.watchRecords} />

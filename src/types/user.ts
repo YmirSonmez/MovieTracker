@@ -31,3 +31,25 @@ export const DEFAULT_SETTINGS: UserSettings = {
   confirmBeforeMarkingWatched: false,
   dataMode: 'local',
 }
+
+/**
+ * A visitor's own TMDB key, entered in Settings. Kept separate from
+ * UserSettings because it travels with backups (per the user's explicit
+ * choice) and callers that only need app preferences shouldn't need to
+ * touch anything key-shaped.
+ */
+export interface ApiConfig {
+  tmdbApiKey?: string
+}
+
+export const DEFAULT_API_CONFIG: ApiConfig = {}
+
+/** Local pointer/cache for the Google Drive backup file - never exported,
+ * never contains a token (Drive access tokens are short-lived and are only
+ * ever held in memory for the current session). */
+export interface CloudSyncMeta {
+  driveFileId?: string
+  lastSyncedAt?: string
+}
+
+export const DEFAULT_CLOUD_SYNC_META: CloudSyncMeta = {}

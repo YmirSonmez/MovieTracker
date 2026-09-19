@@ -1,1 +1,1 @@
-export { isLiveDataConfigured } from '@/api/tmdb/client'
+export { isLiveDataConfigured, verifyTMDBApiKey } from '@/api/tmdb/client'

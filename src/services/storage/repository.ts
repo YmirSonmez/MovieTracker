@@ -9,7 +9,7 @@ import type {
   WatchRecord,
 } from '@/types/watch'
 import type { MediaSummary } from '@/types/media'
-import type { UserProfile, UserSettings } from '@/types/user'
+import type { ApiConfig, CloudSyncMeta, UserProfile, UserSettings } from '@/types/user'
 
 /**
  * The only module in the app allowed to know that IndexedDB exists.
@@ -122,6 +122,20 @@ export const storage = {
     await (await getDB()).put('meta', settings, 'settings')
   },
 
+  async getApiConfig(): Promise<ApiConfig | undefined> {
+    return (await getDB()).get('meta', 'apiConfig') as Promise<ApiConfig | undefined>
+  },
+  async putApiConfig(config: ApiConfig): Promise<void> {
+    await (await getDB()).put('meta', config, 'apiConfig')
+  },
+
+  async getCloudSyncMeta(): Promise<CloudSyncMeta | undefined> {
+    return (await getDB()).get('meta', 'cloudSync') as Promise<CloudSyncMeta | undefined>
+  },
+  async putCloudSyncMeta(meta: CloudSyncMeta): Promise<void> {
+    await (await getDB()).put('meta', meta, 'cloudSync')
+  },
+
   /** Wipes every locally stored table. Used only after an explicit,
    * confirmed "delete all local data" action - never called implicitly. */
   async clearAll(): Promise<void> {
@@ -155,6 +169,7 @@ export const storage = {
     mediaCache: MediaSummary[]
     profile: UserProfile
     settings: UserSettings
+    apiConfig?: ApiConfig
   }): Promise<void> {
     await this.clearAll()
     const db = await getDB()
@@ -173,6 +188,7 @@ export const storage = {
       ...data.mediaCache.map((e) => tx.objectStore('mediaCache').put(e)),
       tx.objectStore('meta').put(data.profile, 'profile'),
       tx.objectStore('meta').put(data.settings, 'settings'),
+      ...(data.apiConfig ? [tx.objectStore('meta').put(data.apiConfig, 'apiConfig')] : []),
     ])
     await tx.done
   },

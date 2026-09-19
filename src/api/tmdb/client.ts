@@ -1,3 +1,5 @@
+import { useApiConfigStore } from '@/store/apiConfigStore'
+
 const BASE_URL = 'https://api.themoviedb.org/3'
 const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p'
 
@@ -12,13 +14,29 @@ export class TMDBError extends Error {
   }
 }
 
+/** A visitor's own key (entered in Settings) always wins over the build-time
+ * key the repo owner may have injected from a GitHub secret - it's the more
+ * specific, more recently expressed intent. */
 export function getTMDBApiKey(): string | undefined {
-  const key = import.meta.env.VITE_TMDB_API_KEY
-  return key && key.trim().length > 0 ? key.trim() : undefined
+  const personalKey = useApiConfigStore.getState().config.tmdbApiKey
+  if (personalKey && personalKey.trim().length > 0) return personalKey.trim()
+  const buildKey = import.meta.env.VITE_TMDB_API_KEY
+  return buildKey && buildKey.trim().length > 0 ? buildKey.trim() : undefined
 }
 
 export function isLiveDataConfigured(): boolean {
   return Boolean(getTMDBApiKey())
+}
+
+/** Checks a candidate key against TMDB directly, without touching the
+ * configured key - lets Settings validate before saving. */
+export async function verifyTMDBApiKey(key: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE_URL}/configuration?api_key=${encodeURIComponent(key)}`)
+    return res.ok
+  } catch {
+    return false
+  }
 }
 
 export async function tmdbFetch<T>(path: string, params: Record<string, string | number | undefined> = {}): Promise<T> {

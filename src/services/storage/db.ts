@@ -10,7 +10,7 @@ import type {
   WatchRecord,
 } from '@/types/watch'
 import type { MediaSummary } from '@/types/media'
-import type { UserProfile, UserSettings } from '@/types/user'
+import type { ApiConfig, CloudSyncMeta, UserProfile, UserSettings } from '@/types/user'
 
 /**
  * Every persisted shape lives here, in one schema, so the storage layer is
@@ -58,7 +58,7 @@ export interface MovieTrackerDB extends DBSchema {
   }
   meta: {
     key: string
-    value: UserProfile | UserSettings
+    value: UserProfile | UserSettings | ApiConfig | CloudSyncMeta
   }
 }
 
