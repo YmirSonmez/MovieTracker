@@ -46,10 +46,14 @@ export const DEFAULT_API_CONFIG: ApiConfig = {}
 
 /** Local pointer/cache for the Google Drive backup file - never exported,
  * never contains a token (Drive access tokens are short-lived and are only
- * ever held in memory for the current session). */
+ * ever held in memory for the current session). `lastSyncedLibraryCount`
+ * lets backupToDrive() notice when the local library has collapsed since
+ * the last successful upload (storage eviction, a bug, an accidental wipe)
+ * so it never silently overwrites a healthy backup with an empty one. */
 export interface CloudSyncMeta {
   driveFileId?: string
   lastSyncedAt?: string
+  lastSyncedLibraryCount?: number
 }
 
 export const DEFAULT_CLOUD_SYNC_META: CloudSyncMeta = {}

@@ -33,6 +33,12 @@ export function GoogleDriveSyncRow() {
           description: email ? `${email} hesabında mevcut bir yedek bulundu. Üzerine yazmadan önce incele.` : 'Mevcut bir yedek bulundu. Üzerine yazmadan önce incele.',
           action: { label: 'Drive’dan Geri Yükle', onClick: () => { window.location.hash = ROUTES.dataManagement } },
         })
+      } else if ('suspiciousDrop' in result) {
+        toast({
+          title: 'Kitaplığın Drive’daki yedekten çok daha küçük',
+          description: 'Olası bir veri kaybının üzerine yazmamak için durduruldu. Veri Yönetimi’nden kontrol et.',
+          action: { label: 'Veri Yönetimi', onClick: () => { window.location.hash = ROUTES.dataManagement } },
+        })
       } else {
         toast({ title: 'Google Drive bağlandı', description: email ? `${email} - ilk yedeğin alındı.` : 'İlk yedeğin alındı.', variant: 'success' })
       }

@@ -51,6 +51,12 @@ export function GoogleDriveConnectBanner() {
           description: 'Üzerine yazmadan önce onu incele - Veri Yönetimi’nde "Drive’dan Geri Yükle" ile aç.',
           action: { label: 'Veri Yönetimi', onClick: () => { window.location.hash = ROUTES.dataManagement } },
         })
+      } else if ('suspiciousDrop' in result) {
+        toast({
+          title: 'Kitaplığın Drive’daki yedekten çok daha küçük',
+          description: 'Olası bir veri kaybının üzerine yazmamak için durduruldu. Veri Yönetimi’nden kontrol et.',
+          action: { label: 'Veri Yönetimi', onClick: () => { window.location.hash = ROUTES.dataManagement } },
+        })
       } else {
         toast({ title: 'Google Drive’a bağlandı', description: 'İlk yedeğin alındı.', variant: 'success' })
       }

@@ -1,12 +1,20 @@
 import { useRef, useState } from 'react'
-import { AlertTriangle, CloudDownload, CloudUpload, Download, KeyRound, Sparkles, Trash2, Upload } from 'lucide-react'
+import { AlertTriangle, CloudDownload, CloudUpload, Download, History, KeyRound, RotateCcw, Sparkles, Trash2, Upload } from 'lucide-react'
 import { useLibraryStore } from '@/store/libraryStore'
 import { useRatingsStore } from '@/store/ratingsStore'
 import { useListsStore } from '@/store/listsStore'
 import { useCloudSyncStore } from '@/store/cloudSyncStore'
 import { loadDemoData, clearDemoData } from '@/data/demoSeed'
 import { toast } from '@/store/toastStore'
-import { backupToDrive, restoreFromDrive, isGoogleDriveConfigured, GoogleDriveError } from '@/services/googleDrive'
+import {
+  backupToDrive,
+  restoreFromDrive,
+  listBackupRevisions,
+  restoreFromDriveRevision,
+  isGoogleDriveConfigured,
+  GoogleDriveError,
+} from '@/services/googleDrive'
+import type { DriveBackupRevision } from '@/services/googleDrive'
 import {
   buildExportBundle,
   buildImportPreview,
@@ -16,7 +24,7 @@ import {
   parseImportBundle,
   ImportValidationError,
 } from '@/utils/exportImport'
-import { Badge, Button, Card, ConfirmDialog } from '@/components/ui'
+import { Badge, Button, Card, ConfirmDialog, Modal } from '@/components/ui'
 import type { ImportPreview, ImportStrategy, MovieTrackerExport } from '@/types/export'
 
 export function DataManagementPage() {
@@ -37,6 +45,12 @@ export function DataManagementPage() {
   const [importing, setImporting] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const [drivePending, setDrivePending] = useState<'backup' | 'restore' | null>(null)
+  const [dropWarning, setDropWarning] = useState<{ previousCount: number; nextCount: number } | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [revisions, setRevisions] = useState<DriveBackupRevision[] | null>(null)
+  const [revisionsError, setRevisionsError] = useState<string | null>(null)
+  const [revisionsLoading, setRevisionsLoading] = useState(false)
+  const [restoringRevisionId, setRestoringRevisionId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const libraryCount = Object.keys(entries).length
@@ -72,10 +86,11 @@ export function DataManagementPage() {
     }
   }
 
-  async function handleDriveBackup() {
+  async function handleDriveBackup(force = false) {
     setDrivePending('backup')
+    setDropWarning(null)
     try {
-      const result = await backupToDrive()
+      const result = await backupToDrive(force ? { force: true } : undefined)
       if ('conflict' in result) {
         // This device has never reconciled with Drive before, and a backup
         // already exists there (from another device) - pushing over it
@@ -86,6 +101,11 @@ export function DataManagementPage() {
         setImportBundle(bundle)
         setImportPreview(preview)
         toast({ title: 'Drive’da zaten bir yedeğin var', description: 'Üzerine yazılmadı - önce aşağıdaki yedeği incele.' })
+      } else if ('suspiciousDrop' in result) {
+        // Local library collapsed since the last successful upload - never
+        // push that over a healthy backup without the user confirming it's
+        // intentional. Let them decide instead of guessing.
+        setDropWarning({ previousCount: result.previousCount, nextCount: result.nextCount })
       } else {
         toast({ title: 'Google Drive’a yedeklendi', variant: 'success' })
       }
@@ -108,6 +128,40 @@ export function DataManagementPage() {
       toast({ title: 'Geri yükleme başarısız oldu', description: e instanceof GoogleDriveError ? e.message : undefined, variant: 'danger' })
     } finally {
       setDrivePending(null)
+    }
+  }
+
+  async function handleReviewDropBackup() {
+    setDropWarning(null)
+    await handleDriveRestore()
+  }
+
+  async function openHistory() {
+    setHistoryOpen(true)
+    setRevisionsLoading(true)
+    setRevisionsError(null)
+    try {
+      setRevisions(await listBackupRevisions())
+    } catch (e) {
+      setRevisionsError(e instanceof GoogleDriveError ? e.message : 'Yedek geçmişi alınamadı.')
+    } finally {
+      setRevisionsLoading(false)
+    }
+  }
+
+  async function handleRestoreRevision(revision: DriveBackupRevision) {
+    setRestoringRevisionId(revision.id)
+    try {
+      const { bundle, preview } = await restoreFromDriveRevision(revision.id)
+      setImportSource('drive')
+      setImportBundle(bundle)
+      setImportPreview(preview)
+      setHistoryOpen(false)
+      toast({ title: 'Geçmiş sürüm yüklendi', description: 'Aşağıdan birleştir ya da yerine geçir.' })
+    } catch (e) {
+      toast({ title: 'Sürüm yüklenemedi', description: e instanceof GoogleDriveError ? e.message : undefined, variant: 'danger' })
+    } finally {
+      setRestoringRevisionId(null)
     }
   }
 
@@ -158,13 +212,34 @@ export function DataManagementPage() {
             <p className="text-xs text-text-subtle">Son yedekleme: {new Date(lastSyncedAt).toLocaleString('tr-TR')}</p>
           )}
           <div className="flex flex-wrap gap-2">
-            <Button onClick={handleDriveBackup} loading={drivePending === 'backup'} disabled={drivePending !== null}>
+            <Button onClick={() => handleDriveBackup()} loading={drivePending === 'backup'} disabled={drivePending !== null}>
               <CloudUpload className="h-4 w-4" /> Şimdi Yedekle
             </Button>
             <Button variant="outline" onClick={handleDriveRestore} loading={drivePending === 'restore'} disabled={drivePending !== null}>
               <CloudDownload className="h-4 w-4" /> Drive'dan Geri Yükle
             </Button>
+            <Button variant="outline" onClick={openHistory} disabled={drivePending !== null}>
+              <History className="h-4 w-4" /> Yedek Geçmişi
+            </Button>
           </div>
+
+          {dropWarning && (
+            <div className="flex flex-col gap-3 rounded-md border border-warning/40 bg-warning/10 p-4">
+              <p className="flex items-start gap-2 text-sm text-text">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                Drive’daki yedeğin {dropWarning.previousCount} kitaplık öğesi vardı, şu an yerelde sadece {dropWarning.nextCount}{' '}
+                tane var. Bu ani düşüş yanlışlıkla bir veri kaybını işaret edebilir, o yüzden otomatik yedekleme üzerine yazmadı.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={handleReviewDropBackup} loading={drivePending === 'restore'} disabled={drivePending !== null}>
+                  Drive Yedeğini İncele
+                </Button>
+                <Button size="sm" variant="danger" onClick={() => handleDriveBackup(true)} loading={drivePending === 'backup'} disabled={drivePending !== null}>
+                  Bu Doğru, Yine de Yedekle
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
@@ -308,6 +383,47 @@ export function DataManagementPage() {
           toast({ title: 'Tüm yerel veri silindi' })
         }}
       />
+
+      <Modal
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        title="Yedek Geçmişi"
+        description="Drive, her yedeklemenin önceki sürümlerini de saklar. Yanlışlıkla üzerine yazılmış iyi bir yedeğe buradan geri dönebilirsin."
+      >
+        <div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
+          {revisionsLoading && <p className="text-sm text-text-subtle">Yükleniyor…</p>}
+          {revisionsError && (
+            <p className="flex items-center gap-2 text-sm text-danger">
+              <AlertTriangle className="h-4 w-4" /> {revisionsError}
+            </p>
+          )}
+          {revisions && revisions.length === 0 && !revisionsLoading && (
+            <p className="text-sm text-text-subtle">Henüz birden fazla sürüm yok.</p>
+          )}
+          {revisions?.map((revision, i) => (
+            <div key={revision.id} className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
+              <div className="min-w-0">
+                <p className="text-sm text-text">
+                  {new Date(revision.modifiedTime).toLocaleString('tr-TR')}
+                  {i === 0 && <span className="ml-2 text-xs text-text-subtle">(mevcut)</span>}
+                </p>
+                {revision.sizeBytes !== undefined && (
+                  <p className="text-xs text-text-subtle">{Math.max(1, Math.round(revision.sizeBytes / 1024))} KB</p>
+                )}
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleRestoreRevision(revision)}
+                loading={restoringRevisionId === revision.id}
+                disabled={restoringRevisionId !== null || i === 0}
+              >
+                <RotateCcw className="h-4 w-4" /> Geri Yükle
+              </Button>
+            </div>
+          ))}
+        </div>
+      </Modal>
     </div>
   )
 }

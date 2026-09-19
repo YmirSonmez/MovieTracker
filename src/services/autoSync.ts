@@ -26,6 +26,12 @@ import { ROUTES } from '@/utils/routes'
  * with yet (see backupToDrive's `conflict` result) - that would silently
  * destroy a backup made from another device. That case gets its own
  * one-time toast pointing at Veri Yönetimi instead of a retried backup.
+ *
+ * Same idea in reverse: if the local library has just collapsed (storage
+ * eviction, a bug, an accidental wipe) this would otherwise dutifully
+ * upload that emptiness a few seconds later and erase the one good backup
+ * on Drive. backupToDrive() catches that (`suspiciousDrop`) and this shows
+ * its own one-time toast instead of silently retrying forever.
  */
 
 const DEBOUNCE_MS = 4000
@@ -34,6 +40,7 @@ let timer: ReturnType<typeof setTimeout> | null = null
 let started = false
 let reconnectNoticeShown = false
 let conflictNoticeShown = false
+let dropNoticeShown = false
 
 function attemptBackup() {
   const { connectedEmail, meta } = useCloudSyncStore.getState()
@@ -70,17 +77,30 @@ function attemptBackup() {
 
   backupToDrive()
     .then((result) => {
-      if (!('conflict' in result)) return
-      // This device hasn't reconciled with an existing remote backup yet -
-      // never push over it automatically. Point the user at the one place
-      // that can resolve it, once per session rather than on every change.
-      if (conflictNoticeShown) return
-      conflictNoticeShown = true
-      toast({
-        title: 'Drive’da senkronize edilmemiş bir yedek var',
-        description: 'Otomatik yedekleme, üzerine yazmamak için durdu. Önce Veri Yönetimi’nden incele.',
-        action: { label: 'Veri Yönetimi', onClick: () => { window.location.hash = ROUTES.dataManagement } },
-      })
+      if ('conflict' in result) {
+        // This device hasn't reconciled with an existing remote backup yet -
+        // never push over it automatically. Point the user at the one place
+        // that can resolve it, once per session rather than on every change.
+        if (conflictNoticeShown) return
+        conflictNoticeShown = true
+        toast({
+          title: 'Drive’da senkronize edilmemiş bir yedek var',
+          description: 'Otomatik yedekleme, üzerine yazmamak için durdu. Önce Veri Yönetimi’nden incele.',
+          action: { label: 'Veri Yönetimi', onClick: () => { window.location.hash = ROUTES.dataManagement } },
+        })
+        return
+      }
+      if ('suspiciousDrop' in result) {
+        // Local library just shrank drastically since the last successful
+        // upload - never push that over a healthy remote backup on its own.
+        if (dropNoticeShown) return
+        dropNoticeShown = true
+        toast({
+          title: 'Kitaplığın aniden küçüldü',
+          description: 'Otomatik yedekleme, olası bir veri kaybının üzerine yazmamak için durdu. Veri Yönetimi’nden kontrol et.',
+          action: { label: 'Veri Yönetimi', onClick: () => { window.location.hash = ROUTES.dataManagement } },
+        })
+      }
     })
     .catch(() => {
       // Best-effort background sync - a real, persistent failure surfaces the

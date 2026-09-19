@@ -191,7 +191,21 @@ async function downloadBackupFile(token: string, fileId: string): Promise<string
   return res.text()
 }
 
-export type BackupResult = { fileId: string } | { conflict: true; fileId: string }
+export type BackupResult =
+  | { fileId: string }
+  | { conflict: true; fileId: string }
+  | { suspiciousDrop: true; fileId: string; previousCount: number; nextCount: number }
+
+/** A library that shrinks by this much since the last successful upload is
+ * treated as data loss rather than the user just tidying up their list. */
+const SUSPICIOUS_DROP_MIN_PREVIOUS = 3
+const SUSPICIOUS_DROP_RATIO = 0.2
+
+function isSuspiciousDrop(previousCount: number, nextCount: number): boolean {
+  if (previousCount < SUSPICIOUS_DROP_MIN_PREVIOUS) return false
+  if (nextCount === 0) return true
+  return nextCount / previousCount < SUSPICIOUS_DROP_RATIO
+}
 
 /**
  * Uploads the current app state as the (single) Drive backup file,
@@ -206,10 +220,21 @@ export type BackupResult = { fileId: string } | { conflict: true; fileId: string
  * point the user at restoreFromDrive() (merge or replace) to reconcile
  * first; only after that succeeds does `driveFileId` get set, and normal
  * backups resume.
+ *
+ * The same danger exists the other way round, after that relationship is
+ * established: if THIS device's local library suddenly collapses (a
+ * storage eviction, a bug, an accidental "sil" click) auto-sync would
+ * otherwise dutifully upload that emptiness a few seconds later and
+ * permanently erase the one good backup on Drive. So every write against
+ * an existing file first compares the new library size to the last
+ * successfully synced one; a suspicious collapse returns
+ * `{ suspiciousDrop: true }` instead of writing, unless the caller passes
+ * `force: true` (an explicit, user-acknowledged "back up anyway").
  */
-export async function backupToDrive(): Promise<BackupResult> {
+export async function backupToDrive(options?: { force?: boolean }): Promise<BackupResult> {
   const token = await ensureAccessToken()
-  let fileId = useCloudSyncStore.getState().meta.driveFileId
+  const { meta } = useCloudSyncStore.getState()
+  let fileId = meta.driveFileId
 
   if (!fileId) {
     const existingId = await findBackupFileId(token)
@@ -218,7 +243,17 @@ export async function backupToDrive(): Promise<BackupResult> {
     }
   }
 
-  const content = JSON.stringify(buildExportBundle(), null, 2)
+  const bundle = buildExportBundle()
+  const nextCount = bundle.libraryEntries.length
+
+  if (fileId && !options?.force) {
+    const previousCount = meta.lastSyncedLibraryCount ?? 0
+    if (isSuspiciousDrop(previousCount, nextCount)) {
+      return { suspiciousDrop: true, fileId, previousCount, nextCount }
+    }
+  }
+
+  const content = JSON.stringify(bundle, null, 2)
   if (fileId) {
     try {
       await updateBackupFile(token, fileId, content)
@@ -230,7 +265,9 @@ export async function backupToDrive(): Promise<BackupResult> {
     fileId = await createBackupFile(token, content)
   }
 
-  await useCloudSyncStore.getState().updateMeta({ driveFileId: fileId, lastSyncedAt: new Date().toISOString() })
+  await useCloudSyncStore
+    .getState()
+    .updateMeta({ driveFileId: fileId, lastSyncedAt: new Date().toISOString(), lastSyncedLibraryCount: nextCount })
   return { fileId }
 }
 
@@ -245,5 +282,51 @@ export async function restoreFromDrive(): Promise<{ bundle: MovieTrackerExport; 
   const content = await downloadBackupFile(token, fileId)
   const bundle = parseImportBundle(content)
   await useCloudSyncStore.getState().updateMeta({ driveFileId: fileId })
+  return { bundle, preview: buildImportPreview(bundle) }
+}
+
+export interface DriveBackupRevision {
+  id: string
+  modifiedTime: string
+  sizeBytes?: number
+}
+
+/**
+ * Every overwrite of the backup file also lands in Drive's own revision
+ * history, kept automatically without any extra API calls from this app.
+ * That history is a safety net independent of everything above: even if a
+ * bad state slipped past the shrink guard (or was written with `force`),
+ * an earlier good version is still sitting on Drive and recoverable here.
+ * Newest first.
+ */
+export async function listBackupRevisions(): Promise<DriveBackupRevision[]> {
+  const token = await ensureAccessToken()
+  const fileId = useCloudSyncStore.getState().meta.driveFileId ?? (await findBackupFileId(token))
+  if (!fileId) throw new GoogleDriveError('Google Drive hesabında bir Movie Tracker yedeği bulunamadı.')
+
+  const url = new URL(`${DRIVE_FILES_URL}/${fileId}/revisions`)
+  url.searchParams.set('fields', 'revisions(id,modifiedTime,size)')
+  const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` } })
+  if (!res.ok) throw new GoogleDriveError('Yedek geçmişi alınamadı.')
+  const data = (await res.json()) as { revisions?: Array<{ id: string; modifiedTime: string; size?: string }> }
+  const revisions = data.revisions ?? []
+  return revisions
+    .map((r) => ({ id: r.id, modifiedTime: r.modifiedTime, sizeBytes: r.size ? Number(r.size) : undefined }))
+    .sort((a, b) => b.modifiedTime.localeCompare(a.modifiedTime))
+}
+
+/** Downloads and parses one specific past revision of the backup file,
+ * for the "yedek geçmişi" restore flow - shares the same merge/replace
+ * preview UI as restoreFromDrive() and local file restore. */
+export async function restoreFromDriveRevision(revisionId: string): Promise<{ bundle: MovieTrackerExport; preview: ImportPreview }> {
+  const token = await ensureAccessToken()
+  const fileId = useCloudSyncStore.getState().meta.driveFileId ?? (await findBackupFileId(token))
+  if (!fileId) throw new GoogleDriveError('Google Drive hesabında bir Movie Tracker yedeği bulunamadı.')
+
+  const res = await fetch(`${DRIVE_FILES_URL}/${fileId}/revisions/${revisionId}?alt=media`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) throw new GoogleDriveError('Bu yedek sürümü indirilemedi.')
+  const bundle = parseImportBundle(await res.text())
   return { bundle, preview: buildImportPreview(bundle) }
 }
