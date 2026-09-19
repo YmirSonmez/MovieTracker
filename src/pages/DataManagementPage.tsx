@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, CloudDownload, CloudUpload, Download, History, KeyRound, RotateCcw, Sparkles, Trash2, Upload } from 'lucide-react'
 import { useLibraryStore } from '@/store/libraryStore'
 import { useRatingsStore } from '@/store/ratingsStore'
@@ -55,6 +55,21 @@ export function DataManagementPage() {
 
   const libraryCount = Object.keys(entries).length
   const isLibraryEmpty = libraryCount === 0
+
+  const pendingImport = useCloudSyncStore((s) => s.pendingImport)
+
+  // Connecting on a device that already has a Drive backup lands here with
+  // that backup already fetched (see GoogleDriveConnectBanner/SyncRow) -
+  // show it immediately instead of making the user press "Drive'dan Geri
+  // Yükle" again themselves. Watches the store value (not just mount) since
+  // the connect banner can also fire while this page is already open.
+  useEffect(() => {
+    if (!pendingImport) return
+    useCloudSyncStore.getState().setPendingImport(null)
+    setImportSource('drive')
+    setImportBundle(pendingImport.bundle)
+    setImportPreview(pendingImport.preview)
+  }, [pendingImport])
 
   async function handleFile(file: File) {
     setImportError(null)

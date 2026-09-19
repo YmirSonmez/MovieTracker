@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { CloudUpload, X } from 'lucide-react'
 import { useCloudSyncStore } from '@/store/cloudSyncStore'
-import { connectGoogleDrive, backupToDrive, isGoogleDriveConfigured, GoogleDriveError } from '@/services/googleDrive'
+import { connectGoogleDrive, backupToDrive, restoreFromDrive, isGoogleDriveConfigured, GoogleDriveError } from '@/services/googleDrive'
 import { toast } from '@/store/toastStore'
 import { Button } from '@/components/ui'
 import { DRIVE_BANNER_DISMISSED_KEY } from '@/utils/constants'
@@ -46,11 +46,21 @@ export function GoogleDriveConnectBanner() {
       await connectGoogleDrive()
       const result = await backupToDrive()
       if ('conflict' in result) {
+        // Don't just point at Veri Yönetimi and hope they notice the toast and
+        // press restore themselves too - fetch the existing backup right now
+        // (harmless, it's a download) and hand it off so the page they land
+        // on already shows it, ready to merge or replace.
+        try {
+          const { bundle, preview } = await restoreFromDrive()
+          useCloudSyncStore.getState().setPendingImport({ bundle, preview })
+        } catch {
+          // Fetch failed - fall back to just pointing them at the page below.
+        }
         toast({
           title: 'Drive’da zaten bir yedeğin var',
-          description: 'Üzerine yazmadan önce onu incele - Veri Yönetimi’nde "Drive’dan Geri Yükle" ile aç.',
-          action: { label: 'Veri Yönetimi', onClick: () => { window.location.hash = ROUTES.dataManagement } },
+          description: 'Üzerine yazmadan önce incelemen için Veri Yönetimi’ne yönlendiriliyorsun.',
         })
+        window.location.hash = ROUTES.dataManagement
       } else if ('suspiciousDrop' in result) {
         toast({
           title: 'Kitaplığın Drive’daki yedekten çok daha küçük',

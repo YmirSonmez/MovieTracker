@@ -1,6 +1,13 @@
 import { useState } from 'react'
 import { useCloudSyncStore } from '@/store/cloudSyncStore'
-import { connectGoogleDrive, disconnectGoogleDrive, backupToDrive, isGoogleDriveConfigured, GoogleDriveError } from '@/services/googleDrive'
+import {
+  connectGoogleDrive,
+  disconnectGoogleDrive,
+  backupToDrive,
+  restoreFromDrive,
+  isGoogleDriveConfigured,
+  GoogleDriveError,
+} from '@/services/googleDrive'
 import { toast } from '@/store/toastStore'
 import { Badge, Button } from '@/components/ui'
 import { SettingsRow } from './SettingsRow'
@@ -28,11 +35,23 @@ export function GoogleDriveSyncRow() {
       const { email } = await connectGoogleDrive()
       const result = await backupToDrive()
       if ('conflict' in result) {
+        // Fetch the existing backup now (harmless, it's a download) and hand
+        // it off so Veri Yönetimi already shows it - connecting on a new
+        // device shouldn't require noticing this toast AND remembering to
+        // press restore again yourself.
+        try {
+          const { bundle, preview } = await restoreFromDrive()
+          useCloudSyncStore.getState().setPendingImport({ bundle, preview })
+        } catch {
+          // Fetch failed - fall back to just pointing them at the page below.
+        }
         toast({
           title: 'Drive’da zaten bir yedeğin var',
-          description: email ? `${email} hesabında mevcut bir yedek bulundu. Üzerine yazmadan önce incele.` : 'Mevcut bir yedek bulundu. Üzerine yazmadan önce incele.',
-          action: { label: 'Drive’dan Geri Yükle', onClick: () => { window.location.hash = ROUTES.dataManagement } },
+          description: email
+            ? `${email} hesabında mevcut bir yedek bulundu - incelemen için Veri Yönetimi’ne yönlendiriliyorsun.`
+            : 'Mevcut bir yedek bulundu - incelemen için Veri Yönetimi’ne yönlendiriliyorsun.',
         })
+        window.location.hash = ROUTES.dataManagement
       } else if ('suspiciousDrop' in result) {
         toast({
           title: 'Kitaplığın Drive’daki yedekten çok daha küçük',
