@@ -1,0 +1,146 @@
+import { buildShow, type ShowSeed } from './builders'
+
+function fillerEpisodes(from: number, to: number) {
+  return Array.from({ length: to - from + 1 }, (_, i) => ({ number: from + i, name: `${from + i}. Bölüm` }))
+}
+
+const SEEDS: ShowSeed[] = [
+  {
+    slug: 'breaking-bad',
+    title: 'Breaking Bad',
+    year: 2008,
+    genreIds: [80, 18],
+    overview: 'Kanser teşhisi konan bir kimya öğretmeni, ailesine miras bırakmak için eski öğrencisiyle uyuşturucu üretimine girişir ve giderek karanlık bir dönüşüm yaşar.',
+    voteAverage: 8.9,
+    status: 'ended',
+    network: 'AMC',
+    cast: ['Bryan Cranston', 'Aaron Paul', 'Anna Gunn', 'Dean Norris'],
+    seasons: [
+      {
+        number: 1,
+        episodes: [
+          { number: 1, name: 'Pilot' },
+          { number: 2, name: "Cat's in the Bag..." },
+          { number: 3, name: "...And the Bag's in the River" },
+          { number: 4, name: 'Cancer Man' },
+          { number: 5, name: "Gray Matter" },
+          { number: 6, name: 'Crazy Handful of Nothin\'' },
+          { number: 7, name: 'A No-Rough-Stuff-Type Deal' },
+        ],
+      },
+      {
+        number: 2,
+        episodes: [
+          { number: 1, name: 'Seven Thirty-Seven' },
+          { number: 2, name: 'Grilled' },
+          { number: 3, name: 'Bit by a Dead Bee' },
+          { number: 4, name: 'Down' },
+          { number: 5, name: 'Breakage' },
+          { number: 6, name: 'Peekaboo' },
+          { number: 7, name: 'Negro y Azul' },
+          { number: 8, name: 'Better Call Saul' },
+          { number: 9, name: '4 Days Out' },
+          { number: 10, name: 'Over' },
+          { number: 11, name: 'Mandala' },
+          { number: 12, name: 'Phoenix' },
+          { number: 13, name: 'ABQ' },
+        ],
+      },
+      {
+        number: 3,
+        episodes: [
+          { number: 1, name: 'No Más' },
+          { number: 2, name: 'Caballo sin Nombre' },
+          { number: 3, name: 'I.F.T.' },
+          { number: 4, name: 'Green Light' },
+          { number: 5, name: 'Más' },
+          { number: 6, name: 'Sunset' },
+          { number: 7, name: 'One Minute' },
+        ],
+      },
+    ],
+  },
+  {
+    slug: 'the-office',
+    title: 'The Office',
+    year: 2005,
+    genreIds: [35],
+    overview: 'Scranton\'daki sıradan bir kağıt şirketinin çalışanlarını sahte belgesel tadında takip eden, tuhaf ama sevimli bir ofis komedisi.',
+    voteAverage: 8.6,
+    status: 'ended',
+    network: 'NBC',
+    cast: ['Steve Carell', 'John Krasinski', 'Jenna Fischer', 'Rainn Wilson'],
+    seasons: [
+      {
+        number: 1,
+        episodes: [
+          { number: 1, name: 'Pilot' },
+          { number: 2, name: 'Diversity Day' },
+          { number: 3, name: 'Health Care' },
+          { number: 4, name: 'The Alliance' },
+          { number: 5, name: 'Basketball' },
+          { number: 6, name: 'Hot Girl' },
+        ],
+      },
+      {
+        number: 5,
+        episodes: [
+          ...fillerEpisodes(1, 12),
+          { number: 13, name: 'Café Disco' },
+          { number: 14, name: 'Stress Relief' },
+          ...fillerEpisodes(15, 28),
+        ],
+      },
+    ],
+  },
+  {
+    slug: 'stranger-things',
+    title: 'Stranger Things',
+    year: 2016,
+    genreIds: [10765, 27],
+    overview: '1980\'lerde küçük bir kasabada bir çocuğun kaybolmasıyla başlayan olaylar, arkadaş grubunu gizli devlet deneyleri ve başka bir boyutla yüzleştirir.',
+    voteAverage: 8.6,
+    status: 'returning',
+    network: 'Netflix',
+    cast: ['Millie Bobby Brown', 'Finn Wolfhard', 'Winona Ryder', 'David Harbour'],
+    seasons: [{ number: 1, episodes: fillerEpisodes(1, 8) }],
+  },
+  {
+    slug: 'dark',
+    title: 'Dark',
+    year: 2017,
+    genreIds: [9648, 878],
+    overview: 'Küçük bir Alman kasabasında kaybolan çocuklar, dört ailenin sırlarını dört farklı zaman diliminde birbirine bağlayan karmaşık bir örgüyü ortaya çıkarır.',
+    voteAverage: 8.7,
+    status: 'ended',
+    network: 'Netflix',
+    cast: ['Louis Hofmann', 'Karoline Eichhorn', 'Lisa Vicari'],
+    seasons: [{ number: 1, episodes: fillerEpisodes(1, 10) }],
+  },
+  {
+    slug: 'money-heist',
+    title: 'Money Heist',
+    year: 2017,
+    genreIds: [80, 18],
+    overview: 'Kod adlarıyla anılan bir grup soyguncu, "Profesör" adlı stratejist liderliğinde İspanyol Darphanesi\'ni basmak için akıl almaz bir plan uygular.',
+    voteAverage: 8.3,
+    status: 'ended',
+    network: 'Netflix',
+    cast: ['Úrsula Corberó', 'Álvaro Morte', 'Itziar Ituño'],
+    seasons: [{ number: 1, episodes: fillerEpisodes(1, 9) }],
+  },
+  {
+    slug: 'brooklyn-nine-nine',
+    title: 'Brooklyn Nine-Nine',
+    year: 2013,
+    genreIds: [35, 80],
+    overview: 'Brooklyn 99. Karakolu\'ndaki olgunlaşmayı reddeden dedektif Jake Peralta ile disiplinli yeni amirinin çatışmalı ama komik uyumu.',
+    voteAverage: 8.4,
+    status: 'ended',
+    network: 'NBC',
+    cast: ['Andy Samberg', 'Stephanie Beatriz', 'Terry Crews', 'Melissa Fumero'],
+    seasons: [{ number: 1, episodes: fillerEpisodes(1, 8) }],
+  },
+]
+
+export const SHOWS = SEEDS.map(buildShow)
