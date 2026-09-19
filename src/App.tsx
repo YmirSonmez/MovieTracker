@@ -21,6 +21,7 @@ const FavoritesPage = lazy(() => import('@/pages/FavoritesPage').then((m) => ({ 
 const ProfilePage = lazy(() => import('@/pages/ProfilePage').then((m) => ({ default: m.ProfilePage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 const DataManagementPage = lazy(() => import('@/pages/DataManagementPage').then((m) => ({ default: m.DataManagementPage })))
+const CatalogListPage = lazy(() => import('@/pages/CatalogListPage').then((m) => ({ default: m.CatalogListPage })))
 const ComingSoonPage = lazy(() => import('@/pages/ComingSoonPage').then((m) => ({ default: m.ComingSoonPage })))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
 
@@ -63,6 +64,7 @@ export default function App() {
           <Route path={ROUTES.profile} element={withSuspense(<ProfilePage />)} />
           <Route path={ROUTES.settings} element={withSuspense(<SettingsPage />)} />
           <Route path={ROUTES.dataManagement} element={withSuspense(<DataManagementPage />)} />
+          <Route path={ROUTE_PATTERNS.catalogList} element={withSuspense(<CatalogListPage />)} />
           <Route path="*" element={withSuspense(<NotFoundPage />)} />
         </Route>
       </Routes>

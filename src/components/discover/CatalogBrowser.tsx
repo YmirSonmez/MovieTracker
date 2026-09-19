@@ -6,6 +6,7 @@ import { MediaRail } from '@/components/media/MediaRail'
 import { MediaGrid } from '@/components/media/MediaGrid'
 import { DiscoverFilters } from './DiscoverFilters'
 import { DEFAULT_FILTERS, type FilterState } from './filterTypes'
+import { ROUTES } from '@/utils/routes'
 import type { MediaType, MediaSummary } from '@/types/media'
 
 interface MoviePools {
@@ -101,19 +102,19 @@ export function CatalogBrowser({ title, lockedType }: CatalogBrowserProps) {
         <>
           {movies && (
             <>
-              <MediaRail title="Bu Hafta Trend Filmler" items={movies.trending} />
-              <MediaRail title="Popüler Filmler" items={movies.popular} />
-              <MediaRail title="En Çok Beğenilen Filmler" items={movies.topRated} />
-              <MediaRail title="Yeni Vizyona Girenler" items={movies.nowPlaying} />
-              <MediaRail title="Yakında" items={movies.upcoming} />
+              <MediaRail title="Bu Hafta Trend Filmler" seeAllPath={ROUTES.catalogList('movie', 'trending')} items={movies.trending} />
+              <MediaRail title="Popüler Filmler" seeAllPath={ROUTES.catalogList('movie', 'popular')} items={movies.popular} />
+              <MediaRail title="En Çok Beğenilen Filmler" seeAllPath={ROUTES.catalogList('movie', 'topRated')} items={movies.topRated} />
+              <MediaRail title="Yeni Vizyona Girenler" seeAllPath={ROUTES.catalogList('movie', 'nowPlaying')} items={movies.nowPlaying} />
+              <MediaRail title="Yakında" seeAllPath={ROUTES.catalogList('movie', 'upcoming')} items={movies.upcoming} />
             </>
           )}
           {shows && (
             <>
-              <MediaRail title="Bu Hafta Trend Diziler" items={shows.trending} />
-              <MediaRail title="Popüler Diziler" items={shows.popular} />
-              <MediaRail title="En Çok Beğenilen Diziler" items={shows.topRated} />
-              <MediaRail title="Yayında Olanlar" items={shows.onTheAir} />
+              <MediaRail title="Bu Hafta Trend Diziler" seeAllPath={ROUTES.catalogList('tv', 'trending')} items={shows.trending} />
+              <MediaRail title="Popüler Diziler" seeAllPath={ROUTES.catalogList('tv', 'popular')} items={shows.popular} />
+              <MediaRail title="En Çok Beğenilen Diziler" seeAllPath={ROUTES.catalogList('tv', 'topRated')} items={shows.topRated} />
+              <MediaRail title="Yayında Olanlar" seeAllPath={ROUTES.catalogList('tv', 'onTheAir')} items={shows.onTheAir} />
             </>
           )}
         </>

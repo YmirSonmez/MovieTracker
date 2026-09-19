@@ -15,10 +15,12 @@ export const ROUTES = {
   profile: '/profile',
   settings: '/settings',
   dataManagement: '/settings/data',
+  catalogList: (mediaType: 'movie' | 'tv', category: string) => `/discover/${mediaType}/${category}`,
 } as const
 
 export const ROUTE_PATTERNS = {
   listDetail: '/lists/:listId',
   movieDetail: '/movie/:mediaId',
   showDetail: '/tv/:mediaId',
+  catalogList: '/discover/:mediaType/:category',
 } as const

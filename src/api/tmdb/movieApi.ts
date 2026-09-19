@@ -17,8 +17,8 @@ export async function fetchTopRatedMovies(page = 1): Promise<MediaSummary[]> {
   return data.results.map(mapMovieSummary)
 }
 
-export async function fetchTrendingMovies(): Promise<MediaSummary[]> {
-  const data = await tmdbFetch<TMDBPaginated<TMDBMovieSummary>>('/trending/movie/week')
+export async function fetchTrendingMovies(page = 1): Promise<MediaSummary[]> {
+  const data = await tmdbFetch<TMDBPaginated<TMDBMovieSummary>>('/trending/movie/week', { page })
   return data.results.map(mapMovieSummary)
 }
 

@@ -8,19 +8,19 @@ export interface DiscoverFilters {
 }
 
 export interface MovieService {
-  getPopular(): Promise<MediaSummary[]>
-  getTopRated(): Promise<MediaSummary[]>
-  getTrending(): Promise<MediaSummary[]>
-  getUpcoming(): Promise<MediaSummary[]>
-  getNowPlaying(): Promise<MediaSummary[]>
+  getPopular(page?: number): Promise<MediaSummary[]>
+  getTopRated(page?: number): Promise<MediaSummary[]>
+  getTrending(page?: number): Promise<MediaSummary[]>
+  getUpcoming(page?: number): Promise<MediaSummary[]>
+  getNowPlaying(page?: number): Promise<MediaSummary[]>
   getDetail(mediaId: string): Promise<MovieDetail | null>
 }
 
 export interface TVService {
-  getPopular(): Promise<MediaSummary[]>
-  getTopRated(): Promise<MediaSummary[]>
-  getTrending(): Promise<MediaSummary[]>
-  getOnTheAir(): Promise<MediaSummary[]>
+  getPopular(page?: number): Promise<MediaSummary[]>
+  getTopRated(page?: number): Promise<MediaSummary[]>
+  getTrending(page?: number): Promise<MediaSummary[]>
+  getOnTheAir(page?: number): Promise<MediaSummary[]>
   getDetail(mediaId: string): Promise<TVShowDetail | null>
 }
 
