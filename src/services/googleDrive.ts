@@ -69,10 +69,47 @@ function loadGisScript(): Promise<void> {
     script.async = true
     script.defer = true
     script.onload = () => resolve()
-    script.onerror = () => reject(new GoogleDriveError('Google giriş betiği yüklenemedi. İnternet bağlantını kontrol et.'))
+    script.onerror = () => {
+      // A transient network blip shouldn't permanently break Drive features
+      // for the rest of the session - let the next call retry from scratch.
+      scriptLoadPromise = null
+      reject(new GoogleDriveError('Google giriş betiği yüklenemedi. İnternet bağlantını kontrol et.'))
+    }
     document.head.appendChild(script)
   })
   return scriptLoadPromise
+}
+
+/**
+ * Fetching the GIS script takes a real network round-trip. Doing that for
+ * the first time inside a click handler (ensureAccessToken -> loadGisScript)
+ * delays the popup past the tap that was supposed to authorize it, and
+ * mobile browsers then treat it as script-initiated rather than user-
+ * initiated and kill it - surfacing as a bare "popup window closed" with no
+ * other explanation. Called once at app boot so the script is already
+ * loaded (or failed and retryable) long before anyone taps a Drive button.
+ */
+export function preloadGoogleIdentity(): void {
+  if (!isGoogleDriveConfigured()) return
+  void loadGisScript().catch(() => {
+    // Ignored here - a real click later goes through ensureAccessToken()
+    // again and surfaces the same error to the user properly.
+  })
+}
+
+/** GIS reports popup problems via a bare `{ type, message }` - `message` is
+ * often missing or, when present, raw English GIS internals (e.g. "Popup
+ * window closed"). Translate the type into something a visitor can actually
+ * act on instead of surfacing that string verbatim. */
+function mapTokenErrorToMessage(error: { type: string; message?: string }): string {
+  switch (error.type) {
+    case 'popup_closed':
+      return 'Google giriş penceresi açılır açılmaz kapandı. Lütfen tekrar dene.'
+    case 'popup_failed_to_open':
+      return 'Google giriş penceresi açılamadı. Tarayıcının popup engelleyicisini kontrol edip tekrar dene.'
+    default:
+      return error.message ?? 'Google girişi iptal edildi.'
+  }
 }
 
 function requestAccessToken(): Promise<string> {
@@ -100,7 +137,7 @@ function requestAccessToken(): Promise<string> {
         resolve(response.access_token)
       },
       error_callback: (error) => {
-        reject(new GoogleDriveError(error.message ?? 'Google girişi iptal edildi.'))
+        reject(new GoogleDriveError(mapTokenErrorToMessage(error)))
       },
     })
     client.requestAccessToken()
