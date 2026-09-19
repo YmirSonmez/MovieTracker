@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ReactNode } from 'react'
 import { HashRouter, Route, Routes } from 'react-router-dom'
 import { AppLayout } from '@/layouts/AppLayout'
+import { LoginPage } from '@/pages/LoginPage'
 import { ROUTE_PATTERNS, ROUTES } from '@/utils/routes'
 import { DetailSkeleton } from '@/components/media/DetailSkeleton'
 import { RailSkeleton } from '@/components/ui'
@@ -41,6 +42,7 @@ export default function App() {
   return (
     <HashRouter>
       <Routes>
+        <Route path={ROUTES.login} element={<LoginPage />} />
         <Route element={<AppLayout />}>
           <Route path={ROUTES.home} element={withSuspense(<HomePage />)} />
           <Route path={ROUTES.discover} element={withSuspense(<DiscoverPage />)} />

@@ -1,4 +1,5 @@
 export const ROUTES = {
+  login: '/giris',
   home: '/',
   discover: '/discover',
   movies: '/movies',
