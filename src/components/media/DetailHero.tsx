@@ -28,7 +28,11 @@ export function DetailHero({
     <div className="flex flex-col">
       <div className="relative h-56 w-full overflow-hidden rounded-md bg-surface-2 sm:h-72 lg:h-80">
         {backdropPath && <img src={backdropPath} alt="" className="h-full w-full object-cover" />}
-        <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/40 to-transparent" />
+        {/* from-35% keeps the bottom third fully opaque - deep enough to fully
+            cover the poster's overlap band below (see -mt-16/-mt-20 on the
+            row underneath), so nothing in the backdrop (a caption baked into
+            a photo, a busy scene) ever shows through behind the poster. */}
+        <div className="absolute inset-0 bg-gradient-to-t from-bg from-35% via-bg/40 to-transparent" />
       </div>
 
       {/* Backdrop above is `relative`, which makes it a positioned box that

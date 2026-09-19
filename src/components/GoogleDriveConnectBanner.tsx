@@ -54,17 +54,21 @@ export function GoogleDriveConnectBanner() {
   }
 
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-3 rounded-md border border-accent/30 bg-accent/10 px-4 py-3">
-      <CloudUpload className="h-5 w-5 shrink-0 text-accent" />
-      <p className="min-w-0 flex-1 text-sm text-text">
-        Verini kaybetme riskine karşı kendi Google Drive hesabına yedekle - ayarlara gitmene gerek yok, tek tıkla hallolur.
-      </p>
-      <Button size="sm" onClick={handleConnect} loading={connecting} disabled={connecting}>
-        Bağlan ve Yedekle
-      </Button>
-      <button type="button" onClick={dismiss} aria-label="Kapat" className="text-text-subtle hover:text-text">
-        <X className="h-4 w-4" />
-      </button>
+    <div className="mb-4 flex flex-col gap-3 rounded-md border border-accent/30 bg-accent/10 px-4 py-3 sm:flex-row sm:items-center">
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <CloudUpload className="h-5 w-5 shrink-0 text-accent" />
+        <p className="min-w-0 text-sm text-text">
+          Verini kaybetme riskine karşı kendi Google Drive hesabına yedekle - ayarlara gitmene gerek yok, tek tıkla hallolur.
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center justify-end gap-3">
+        <Button size="sm" onClick={handleConnect} loading={connecting} disabled={connecting}>
+          Bağlan ve Yedekle
+        </Button>
+        <button type="button" onClick={dismiss} aria-label="Kapat" className="shrink-0 text-text-subtle hover:text-text">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   )
 }
