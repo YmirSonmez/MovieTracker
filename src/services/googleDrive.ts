@@ -191,13 +191,34 @@ async function downloadBackupFile(token: string, fileId: string): Promise<string
   return res.text()
 }
 
-/** Uploads the current app state as the (single) Drive backup file,
- * creating it on the first backup and overwriting it on every one after. */
-export async function backupToDrive(): Promise<{ fileId: string }> {
-  const token = await ensureAccessToken()
-  const content = JSON.stringify(buildExportBundle(), null, 2)
+export type BackupResult = { fileId: string } | { conflict: true; fileId: string }
 
-  let fileId = useCloudSyncStore.getState().meta.driveFileId ?? (await findBackupFileId(token))
+/**
+ * Uploads the current app state as the (single) Drive backup file,
+ * creating it on the first backup and overwriting it on every one after -
+ * but ONLY once this device has an established, reconciled relationship
+ * with that file (`meta.driveFileId`). The first time a device connects,
+ * with no `driveFileId` of its own yet, it checks Drive before writing
+ * anything: if a backup already exists there (the same Google account,
+ * connected from another device, with data this device has never seen),
+ * it is never silently overwritten with this device's local state - that
+ * would destroy it. Callers get `{ conflict: true }` instead and must
+ * point the user at restoreFromDrive() (merge or replace) to reconcile
+ * first; only after that succeeds does `driveFileId` get set, and normal
+ * backups resume.
+ */
+export async function backupToDrive(): Promise<BackupResult> {
+  const token = await ensureAccessToken()
+  let fileId = useCloudSyncStore.getState().meta.driveFileId
+
+  if (!fileId) {
+    const existingId = await findBackupFileId(token)
+    if (existingId) {
+      return { conflict: true, fileId: existingId }
+    }
+  }
+
+  const content = JSON.stringify(buildExportBundle(), null, 2)
   if (fileId) {
     try {
       await updateBackupFile(token, fileId, content)

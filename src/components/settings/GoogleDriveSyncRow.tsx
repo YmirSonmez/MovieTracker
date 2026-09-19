@@ -4,6 +4,7 @@ import { connectGoogleDrive, disconnectGoogleDrive, backupToDrive, isGoogleDrive
 import { toast } from '@/store/toastStore'
 import { Badge, Button } from '@/components/ui'
 import { SettingsRow } from './SettingsRow'
+import { ROUTES } from '@/utils/routes'
 
 export function GoogleDriveSyncRow() {
   const configured = isGoogleDriveConfigured()
@@ -25,8 +26,16 @@ export function GoogleDriveSyncRow() {
     setConnecting(true)
     try {
       const { email } = await connectGoogleDrive()
-      await backupToDrive()
-      toast({ title: 'Google Drive bağlandı', description: email ? `${email} - ilk yedeğin alındı.` : 'İlk yedeğin alındı.', variant: 'success' })
+      const result = await backupToDrive()
+      if ('conflict' in result) {
+        toast({
+          title: 'Drive’da zaten bir yedeğin var',
+          description: email ? `${email} hesabında mevcut bir yedek bulundu. Üzerine yazmadan önce incele.` : 'Mevcut bir yedek bulundu. Üzerine yazmadan önce incele.',
+          action: { label: 'Drive’dan Geri Yükle', onClick: () => { window.location.hash = ROUTES.dataManagement } },
+        })
+      } else {
+        toast({ title: 'Google Drive bağlandı', description: email ? `${email} - ilk yedeğin alındı.` : 'İlk yedeğin alındı.', variant: 'success' })
+      }
     } catch (e) {
       toast({ title: 'Bağlantı başarısız oldu', description: e instanceof GoogleDriveError ? e.message : undefined, variant: 'danger' })
     } finally {

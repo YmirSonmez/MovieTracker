@@ -5,6 +5,7 @@ import { connectGoogleDrive, backupToDrive, isGoogleDriveConfigured, GoogleDrive
 import { toast } from '@/store/toastStore'
 import { Button } from '@/components/ui'
 import { DRIVE_BANNER_DISMISSED_KEY } from '@/utils/constants'
+import { ROUTES } from '@/utils/routes'
 
 function readDismissed(): boolean {
   try {
@@ -43,8 +44,16 @@ export function GoogleDriveConnectBanner() {
     setConnecting(true)
     try {
       await connectGoogleDrive()
-      await backupToDrive()
-      toast({ title: 'Google Drive’a bağlandı', description: 'İlk yedeğin alındı.', variant: 'success' })
+      const result = await backupToDrive()
+      if ('conflict' in result) {
+        toast({
+          title: 'Drive’da zaten bir yedeğin var',
+          description: 'Üzerine yazmadan önce onu incele - Veri Yönetimi’nde "Drive’dan Geri Yükle" ile aç.',
+          action: { label: 'Veri Yönetimi', onClick: () => { window.location.hash = ROUTES.dataManagement } },
+        })
+      } else {
+        toast({ title: 'Google Drive’a bağlandı', description: 'İlk yedeğin alındı.', variant: 'success' })
+      }
       dismiss()
     } catch (e) {
       toast({ title: 'Bağlantı başarısız oldu', description: e instanceof GoogleDriveError ? e.message : undefined, variant: 'danger' })

@@ -75,8 +75,20 @@ export function DataManagementPage() {
   async function handleDriveBackup() {
     setDrivePending('backup')
     try {
-      await backupToDrive()
-      toast({ title: 'Google Drive’a yedeklendi', variant: 'success' })
+      const result = await backupToDrive()
+      if ('conflict' in result) {
+        // This device has never reconciled with Drive before, and a backup
+        // already exists there (from another device) - pushing over it
+        // blind would destroy it. Show the same merge/replace preview the
+        // "Drive'dan Geri Yükle" button uses, so the user decides first.
+        const { bundle, preview } = await restoreFromDrive()
+        setImportSource('drive')
+        setImportBundle(bundle)
+        setImportPreview(preview)
+        toast({ title: 'Drive’da zaten bir yedeğin var', description: 'Üzerine yazılmadı - önce aşağıdaki yedeği incele.' })
+      } else {
+        toast({ title: 'Google Drive’a yedeklendi', variant: 'success' })
+      }
     } catch (e) {
       toast({ title: 'Yedekleme başarısız oldu', description: e instanceof GoogleDriveError ? e.message : undefined, variant: 'danger' })
     } finally {

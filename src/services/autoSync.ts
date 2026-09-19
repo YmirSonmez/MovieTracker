@@ -5,6 +5,7 @@ import { useProfileStore } from '@/store/profileStore'
 import { useCloudSyncStore } from '@/store/cloudSyncStore'
 import { toast } from '@/store/toastStore'
 import { backupToDrive, connectGoogleDrive, hasValidDriveToken, GoogleDriveError } from './googleDrive'
+import { ROUTES } from '@/utils/routes'
 
 /**
  * Once a visitor has connected Google Drive, this keeps their backup fresh
@@ -20,6 +21,11 @@ import { backupToDrive, connectGoogleDrive, hasValidDriveToken, GoogleDriveError
  * background reconnect is not possible. When that happens, this shows one
  * low-key toast with a "Yeniden Bağlan" button (a real click, so the popup
  * is allowed) instead of trying and failing silently forever.
+ *
+ * It also never pushes over a remote backup this device hasn't reconciled
+ * with yet (see backupToDrive's `conflict` result) - that would silently
+ * destroy a backup made from another device. That case gets its own
+ * one-time toast pointing at Veri Yönetimi instead of a retried backup.
  */
 
 const DEBOUNCE_MS = 4000
@@ -27,6 +33,7 @@ const DEBOUNCE_MS = 4000
 let timer: ReturnType<typeof setTimeout> | null = null
 let started = false
 let reconnectNoticeShown = false
+let conflictNoticeShown = false
 
 function attemptBackup() {
   const { connectedEmail, meta } = useCloudSyncStore.getState()
@@ -61,10 +68,24 @@ function attemptBackup() {
     return
   }
 
-  backupToDrive().catch(() => {
-    // Best-effort background sync - a real, persistent failure surfaces the
-    // next time the user backs up explicitly from Veri Yönetimi.
-  })
+  backupToDrive()
+    .then((result) => {
+      if (!('conflict' in result)) return
+      // This device hasn't reconciled with an existing remote backup yet -
+      // never push over it automatically. Point the user at the one place
+      // that can resolve it, once per session rather than on every change.
+      if (conflictNoticeShown) return
+      conflictNoticeShown = true
+      toast({
+        title: 'Drive’da senkronize edilmemiş bir yedek var',
+        description: 'Otomatik yedekleme, üzerine yazmamak için durdu. Önce Veri Yönetimi’nden incele.',
+        action: { label: 'Veri Yönetimi', onClick: () => { window.location.hash = ROUTES.dataManagement } },
+      })
+    })
+    .catch(() => {
+      // Best-effort background sync - a real, persistent failure surfaces the
+      // next time the user backs up explicitly from Veri Yönetimi.
+    })
 }
 
 function scheduleBackup() {
