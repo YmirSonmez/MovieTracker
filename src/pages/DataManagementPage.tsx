@@ -55,6 +55,10 @@ export function DataManagementPage() {
 
   const libraryCount = Object.keys(entries).length
   const isLibraryEmpty = libraryCount === 0
+  // Nothing local to lose - merge and replace produce the identical result,
+  // so asking which one (and warning that local data will be erased) is
+  // pointless friction when there's no local data in the first place.
+  const isLocalDataEmpty = isLibraryEmpty && watchRecords.length === 0 && Object.keys(ratings).length === 0 && lists.length === 0
 
   const pendingImport = useCloudSyncStore((s) => s.pendingImport)
 
@@ -86,11 +90,11 @@ export function DataManagementPage() {
     }
   }
 
-  async function confirmImport() {
+  async function confirmImport(strategyOverride?: ImportStrategy) {
     if (!importBundle) return
     setImporting(true)
     try {
-      await applyImport(importBundle, strategy)
+      await applyImport(importBundle, strategyOverride ?? strategy)
       toast({ title: 'İçe aktarma tamamlandı', description: `${importPreview?.counts.libraryEntries ?? 0} içerik yüklendi.`, variant: 'success' })
       setImportBundle(null)
       setImportPreview(null)
@@ -99,6 +103,16 @@ export function DataManagementPage() {
     } finally {
       setImporting(false)
     }
+  }
+
+  function handleImportClick() {
+    // Nothing local to protect - skip the strategy choice and the "this
+    // erases your current data" confirmation and just bring the backup in.
+    if (isLocalDataEmpty) {
+      void confirmImport('merge')
+      return
+    }
+    setConfirmImportOpen(true)
   }
 
   async function handleDriveBackup(force = false) {
@@ -319,17 +333,21 @@ export function DataManagementPage() {
               <Stat label="Bölüm ilerlemesi" value={importPreview.counts.episodeProgress} />
               <Stat label="Puan" value={importPreview.counts.ratings} />
             </div>
-            <div className="flex flex-col gap-2">
-              <label className="flex items-center gap-2 text-sm text-text">
-                <input type="radio" checked={strategy === 'merge'} onChange={() => setStrategy('merge')} />
-                Mevcut verilerimle birleştir
-              </label>
-              <label className="flex items-center gap-2 text-sm text-text">
-                <input type="radio" checked={strategy === 'replace'} onChange={() => setStrategy('replace')} />
-                Mevcut tüm verimin yerine geç
-              </label>
-            </div>
-            <Button onClick={() => setConfirmImportOpen(true)} disabled={importing} loading={importing} className="self-start">
+            {isLocalDataEmpty ? (
+              <p className="text-sm text-text-subtle">Kitaplığın şu an boş, bu yedek doğrudan içe aktarılacak.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <label className="flex items-center gap-2 text-sm text-text">
+                  <input type="radio" checked={strategy === 'merge'} onChange={() => setStrategy('merge')} />
+                  Mevcut verilerimle birleştir
+                </label>
+                <label className="flex items-center gap-2 text-sm text-text">
+                  <input type="radio" checked={strategy === 'replace'} onChange={() => setStrategy('replace')} />
+                  Mevcut tüm verimin yerine geç
+                </label>
+              </div>
+            )}
+            <Button onClick={handleImportClick} disabled={importing} loading={importing} className="self-start">
               İçe Aktar
             </Button>
           </div>
