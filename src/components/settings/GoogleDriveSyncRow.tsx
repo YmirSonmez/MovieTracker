@@ -58,6 +58,18 @@ export function GoogleDriveSyncRow() {
           description: 'Olası bir veri kaybının üzerine yazmamak için durduruldu. Veri Yönetimi’nden kontrol et.',
           action: { label: 'Veri Yönetimi', onClick: () => { window.location.hash = ROUTES.dataManagement } },
         })
+      } else if ('remoteChanged' in result) {
+        try {
+          const { bundle, preview } = await restoreFromDrive()
+          useCloudSyncStore.getState().setPendingImport({ bundle, preview })
+        } catch {
+          // Fetch failed - fall back to just pointing them at the page below.
+        }
+        toast({
+          title: 'Başka bir cihazdan yeni bir değişiklik var',
+          description: 'Üzerine yazmadan önce incelemen için Veri Yönetimi’ne yönlendiriliyorsun.',
+        })
+        window.location.hash = ROUTES.dataManagement
       } else {
         toast({ title: 'Google Drive bağlandı', description: email ? `${email} - ilk yedeğin alındı.` : 'İlk yedeğin alındı.', variant: 'success' })
       }

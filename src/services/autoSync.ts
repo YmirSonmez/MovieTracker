@@ -32,6 +32,11 @@ import { ROUTES } from '@/utils/routes'
  * upload that emptiness a few seconds later and erase the one good backup
  * on Drive. backupToDrive() catches that (`suspiciousDrop`) and this shows
  * its own one-time toast instead of silently retrying forever.
+ *
+ * And if a second device pushed its own changes since this one last synced,
+ * backupToDrive() notices (`remoteChanged`) instead of silently overwriting
+ * that newer work - same one-time-toast treatment, pointing at Veri
+ * Yönetimi to review it instead of guessing which side should win.
  */
 
 const DEBOUNCE_MS = 4000
@@ -41,6 +46,7 @@ let started = false
 let reconnectNoticeShown = false
 let conflictNoticeShown = false
 let dropNoticeShown = false
+let remoteChangedNoticeShown = false
 
 function attemptBackup() {
   const { connectedEmail, meta } = useCloudSyncStore.getState()
@@ -100,6 +106,18 @@ function attemptBackup() {
           description: 'Otomatik yedekleme, olası bir veri kaybının üzerine yazmamak için durdu. Veri Yönetimi’nden kontrol et.',
           action: { label: 'Veri Yönetimi', onClick: () => { window.location.hash = ROUTES.dataManagement } },
         })
+        return
+      }
+      if ('remoteChanged' in result) {
+        // Another device pushed since this one last synced - never push
+        // over that without a look first.
+        if (remoteChangedNoticeShown) return
+        remoteChangedNoticeShown = true
+        toast({
+          title: 'Başka bir cihazdan yeni bir değişiklik var',
+          description: 'Otomatik yedekleme, üzerine yazmamak için durdu. Veri Yönetimi’nden incele.',
+          action: { label: 'Veri Yönetimi', onClick: () => { window.location.hash = ROUTES.dataManagement } },
+        })
       }
     })
     .catch(() => {
@@ -113,13 +131,25 @@ function scheduleBackup() {
   timer = setTimeout(attemptBackup, DEBOUNCE_MS)
 }
 
+/** Stamps "the local data actually changed at this instant" (as opposed to
+ * "was exported/uploaded at this instant") - this is what travels in every
+ * backup as dataVersion.updatedAt, so a sync can tell which side is really
+ * newer instead of guessing from record counts or upload order. Safe to
+ * call on every store change: subscriptions are only wired up once
+ * hydration has already finished (see startAutoSync), so this never fires
+ * for a store simply loading its existing state back in on boot. */
+function markLocalChange() {
+  void useCloudSyncStore.getState().updateMeta({ lastLocalChangeAt: new Date().toISOString() })
+  scheduleBackup()
+}
+
 /** Call once at app boot (after store hydration). Safe to call more than
  * once - only the first call wires up the subscriptions. */
 export function startAutoSync(): void {
   if (started) return
   started = true
-  useLibraryStore.subscribe(scheduleBackup)
-  useRatingsStore.subscribe(scheduleBackup)
-  useListsStore.subscribe(scheduleBackup)
-  useProfileStore.subscribe(scheduleBackup)
+  useLibraryStore.subscribe(markLocalChange)
+  useRatingsStore.subscribe(markLocalChange)
+  useListsStore.subscribe(markLocalChange)
+  useProfileStore.subscribe(markLocalChange)
 }

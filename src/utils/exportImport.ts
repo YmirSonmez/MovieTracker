@@ -4,9 +4,11 @@ import { useListsStore } from '@/store/listsStore'
 import { useProfileStore } from '@/store/profileStore'
 import { useMediaCacheStore } from '@/store/mediaCacheStore'
 import { useApiConfigStore } from '@/store/apiConfigStore'
+import { useCloudSyncStore } from '@/store/cloudSyncStore'
 import { storage } from '@/services/storage/repository'
 import { hydrateAllStores } from '@/store/init'
 import { EXPORT_SCHEMA_VERSION } from '@/utils/constants'
+import { getDeviceId } from '@/utils/deviceId'
 import type { MovieTrackerExport, ImportPreview, ImportStrategy } from '@/types/export'
 
 export function buildExportBundle(): MovieTrackerExport {
@@ -16,10 +18,15 @@ export function buildExportBundle(): MovieTrackerExport {
   const profileState = useProfileStore.getState()
   const mediaCache = useMediaCacheStore.getState()
   const apiConfigState = useApiConfigStore.getState()
+  const cloudSyncMeta = useCloudSyncStore.getState().meta
 
   return {
     version: EXPORT_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
+    // Falls back to "now" only for a device that has never recorded a local
+    // change (e.g. its very first-ever backup) - there's nothing older to
+    // lose by treating that as current.
+    dataVersion: { deviceId: getDeviceId(), updatedAt: cloudSyncMeta.lastLocalChangeAt ?? new Date().toISOString() },
     profile: profileState.profile,
     settings: profileState.settings,
     apiConfig: apiConfigState.config,
@@ -106,11 +113,14 @@ export function parseImportBundle(raw: string): MovieTrackerExport {
     throw new ImportValidationError('Bu yedek, uygulamanın daha yeni bir sürümünden alınmış. Lütfen uygulamayı güncelle.')
   }
   // v1 backups have no apiConfig field at all - default it to empty rather
-  // than fail the import. Future migrations slot in here, keyed off
-  // bundle.version, before returning.
+  // than fail the import. v2 backups have no dataVersion - treat them as
+  // an unknown, unmatchable device so sync conflict detection just skips
+  // comparing rather than failing the import. Future migrations slot in
+  // here, keyed off bundle.version, before returning.
   return {
     version: bundle.version,
     exportedAt: bundle.exportedAt ?? new Date().toISOString(),
+    dataVersion: bundle.dataVersion ?? { deviceId: 'legacy', updatedAt: bundle.exportedAt ?? new Date(0).toISOString() },
     profile: bundle.profile as MovieTrackerExport['profile'],
     settings: bundle.settings as MovieTrackerExport['settings'],
     apiConfig: bundle.apiConfig ?? {},

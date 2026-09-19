@@ -258,29 +258,70 @@ async function findBackupFileId(token: string): Promise<string | undefined> {
   return data.files?.[0]?.id
 }
 
-async function createBackupFile(token: string, content: string): Promise<string> {
-  const boundary = 'movietrackerbackup'
-  const metadata = { name: BACKUP_FILE_NAME, mimeType: 'application/json' }
-  const body =
+interface RemoteDataVersion {
+  deviceId: string
+  updatedAt: string
+}
+
+function multipartBody(boundary: string, metadata: object, content: string): string {
+  return (
     `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
     `--${boundary}\r\nContent-Type: application/json\r\n\r\n${content}\r\n--${boundary}--`
+  )
+}
+
+/** Drive's `properties` are small custom key/value strings attached to a
+ * file, readable via a metadata-only request (no content download). Stamping
+ * the writer's dataVersion there lets a later write cheaply notice "someone
+ * else changed this since I last looked" without fetching the whole file. */
+function dataVersionProperties(dataVersion: RemoteDataVersion): Record<string, string> {
+  return { deviceId: dataVersion.deviceId, updatedAt: dataVersion.updatedAt }
+}
+
+async function createBackupFile(token: string, content: string, dataVersion: RemoteDataVersion): Promise<string> {
+  const boundary = 'movietrackerbackup'
+  const metadata = { name: BACKUP_FILE_NAME, mimeType: 'application/json', properties: dataVersionProperties(dataVersion) }
   const res = await fetch(`${DRIVE_UPLOAD_URL}?uploadType=multipart&fields=id`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
-    body,
+    body: multipartBody(boundary, metadata, content),
   })
   if (!res.ok) throw new GoogleDriveError('Drive dosyası oluşturulamadı.')
   const data = (await res.json()) as { id: string }
   return data.id
 }
 
-async function updateBackupFile(token: string, fileId: string, content: string): Promise<void> {
-  const res = await fetch(`${DRIVE_UPLOAD_URL}/${fileId}?uploadType=media`, {
+/** Multipart (not plain media) so the same request updates the file's
+ * `properties` alongside its content - a media-only PATCH would silently
+ * leave the previous writer's dataVersion in place. */
+async function updateBackupFile(token: string, fileId: string, content: string, dataVersion: RemoteDataVersion): Promise<void> {
+  const boundary = 'movietrackerbackup'
+  const metadata = { properties: dataVersionProperties(dataVersion) }
+  const res = await fetch(`${DRIVE_UPLOAD_URL}/${fileId}?uploadType=multipart`, {
     method: 'PATCH',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: content,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
+    body: multipartBody(boundary, metadata, content),
   })
   if (!res.ok) throw new GoogleDriveError('Drive dosyası güncellenemedi.')
+}
+
+/** Metadata-only - no content transfer - so backupToDrive() can cheaply
+ * notice the file moved under it before blindly overwriting it. Returns
+ * null for a file with no properties (created before this existed, or the
+ * request itself failing) - callers must treat that as "unknown", not as
+ * "nothing has changed". */
+async function getRemoteDataVersion(token: string, fileId: string): Promise<RemoteDataVersion | null> {
+  try {
+    const res = await fetch(`${DRIVE_FILES_URL}/${fileId}?fields=properties`, { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) return null
+    const data = (await res.json()) as { properties?: Record<string, string> }
+    const deviceId = data.properties?.deviceId
+    const updatedAt = data.properties?.updatedAt
+    if (!deviceId || !updatedAt) return null
+    return { deviceId, updatedAt }
+  } catch {
+    return null
+  }
 }
 
 async function downloadBackupFile(token: string, fileId: string): Promise<string> {
@@ -293,6 +334,7 @@ export type BackupResult =
   | { fileId: string }
   | { conflict: true; fileId: string }
   | { suspiciousDrop: true; fileId: string; previousCount: number; nextCount: number }
+  | { remoteChanged: true; fileId: string }
 
 /** A library that shrinks by this much since the last successful upload is
  * treated as data loss rather than the user just tidying up their list. */
@@ -328,6 +370,16 @@ function isSuspiciousDrop(previousCount: number, nextCount: number): boolean {
  * successfully synced one; a suspicious collapse returns
  * `{ suspiciousDrop: true }` instead of writing, unless the caller passes
  * `force: true` (an explicit, user-acknowledged "back up anyway").
+ *
+ * A third danger only shows up with more than one device: between this
+ * device's last successful sync and now, another device could have pushed
+ * its own newer changes to the same file. Overwriting that blindly would
+ * silently erase work this device never saw. So every write against an
+ * existing file also does one cheap, content-free metadata check first -
+ * has the file's stamped dataVersion moved since we last saw it, and does
+ * it belong to a different device? If so, `{ remoteChanged: true }` instead
+ * of writing; the caller reviews the remote version (same flow as
+ * `conflict`) before anything is decided.
  */
 export async function backupToDrive(options?: { force?: boolean }): Promise<BackupResult> {
   const token = await ensureAccessToken()
@@ -349,29 +401,45 @@ export async function backupToDrive(options?: { force?: boolean }): Promise<Back
     if (isSuspiciousDrop(previousCount, nextCount)) {
       return { suspiciousDrop: true, fileId, previousCount, nextCount }
     }
+
+    const remoteVersion = await getRemoteDataVersion(token, fileId)
+    if (
+      remoteVersion &&
+      remoteVersion.deviceId !== bundle.dataVersion.deviceId &&
+      remoteVersion.updatedAt !== meta.lastKnownRemoteUpdatedAt
+    ) {
+      return { remoteChanged: true, fileId }
+    }
   }
 
   const content = JSON.stringify(bundle, null, 2)
   if (fileId) {
     try {
-      await updateBackupFile(token, fileId, content)
+      await updateBackupFile(token, fileId, content, bundle.dataVersion)
     } catch {
       // Stale pointer (file removed/moved outside the app) - fall back to a fresh one.
-      fileId = await createBackupFile(token, content)
+      fileId = await createBackupFile(token, content, bundle.dataVersion)
     }
   } else {
-    fileId = await createBackupFile(token, content)
+    fileId = await createBackupFile(token, content, bundle.dataVersion)
   }
 
-  await useCloudSyncStore
-    .getState()
-    .updateMeta({ driveFileId: fileId, lastSyncedAt: new Date().toISOString(), lastSyncedLibraryCount: nextCount })
+  await useCloudSyncStore.getState().updateMeta({
+    driveFileId: fileId,
+    lastSyncedAt: new Date().toISOString(),
+    lastSyncedLibraryCount: nextCount,
+    lastKnownRemoteDeviceId: bundle.dataVersion.deviceId,
+    lastKnownRemoteUpdatedAt: bundle.dataVersion.updatedAt,
+  })
   return { fileId }
 }
 
 /** Downloads and parses the Drive backup file. Applying it to local storage
  * is left to the caller, via the same applyImport() flow local file restore
- * uses, so both paths share one merge/replace confirmation UI. */
+ * uses, so both paths share one merge/replace confirmation UI. Recording
+ * the downloaded dataVersion as this device's new "last known remote" is
+ * safe regardless of whether the caller actually applies it - it reflects
+ * what's really on Drive right now either way. */
 export async function restoreFromDrive(): Promise<{ bundle: MovieTrackerExport; preview: ImportPreview }> {
   const token = await ensureAccessToken()
   const fileId = useCloudSyncStore.getState().meta.driveFileId ?? (await findBackupFileId(token))
@@ -379,7 +447,11 @@ export async function restoreFromDrive(): Promise<{ bundle: MovieTrackerExport; 
 
   const content = await downloadBackupFile(token, fileId)
   const bundle = parseImportBundle(content)
-  await useCloudSyncStore.getState().updateMeta({ driveFileId: fileId })
+  await useCloudSyncStore.getState().updateMeta({
+    driveFileId: fileId,
+    lastKnownRemoteDeviceId: bundle.dataVersion.deviceId,
+    lastKnownRemoteUpdatedAt: bundle.dataVersion.updatedAt,
+  })
   return { bundle, preview: buildImportPreview(bundle) }
 }
 

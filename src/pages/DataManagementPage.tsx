@@ -59,6 +59,7 @@ export function DataManagementPage() {
   // so asking which one (and warning that local data will be erased) is
   // pointless friction when there's no local data in the first place.
   const isLocalDataEmpty = isLibraryEmpty && watchRecords.length === 0 && Object.keys(ratings).length === 0 && lists.length === 0
+  const lastLocalChangeAt = useCloudSyncStore((s) => s.meta.lastLocalChangeAt)
 
   const pendingImport = useCloudSyncStore((s) => s.pendingImport)
 
@@ -74,6 +75,13 @@ export function DataManagementPage() {
     setImportBundle(pendingImport.bundle)
     setImportPreview(pendingImport.preview)
   }, [pendingImport])
+
+  // A backup can be older than what's already on this device - the whole
+  // point of dataVersion is telling the two apart instead of guessing from
+  // upload order. Doesn't apply when there's nothing local to compare against.
+  const isImportOlderThanLocal = Boolean(
+    importBundle && lastLocalChangeAt && !isLocalDataEmpty && importBundle.dataVersion.updatedAt < lastLocalChangeAt,
+  )
 
   async function handleFile(file: File) {
     setImportError(null)
@@ -135,6 +143,14 @@ export function DataManagementPage() {
         // push that over a healthy backup without the user confirming it's
         // intentional. Let them decide instead of guessing.
         setDropWarning({ previousCount: result.previousCount, nextCount: result.nextCount })
+      } else if ('remoteChanged' in result) {
+        // Another device pushed since this one last synced - show what's
+        // there now instead of guessing which side should win.
+        const { bundle, preview } = await restoreFromDrive()
+        setImportSource('drive')
+        setImportBundle(bundle)
+        setImportPreview(preview)
+        toast({ title: 'Başka bir cihazdan yeni bir değişiklik var', description: 'Üzerine yazılmadı - önce aşağıdaki yedeği incele.' })
       } else {
         toast({ title: 'Google Drive’a yedeklendi', variant: 'success' })
       }
@@ -327,6 +343,13 @@ export function DataManagementPage() {
               <Badge variant="neutral">{importSource === 'drive' ? 'Google Drive' : 'Dosya'}</Badge>
               {importPreview.containsApiKey && <Badge variant="warning">TMDB anahtarı içeriyor</Badge>}
             </div>
+            {isImportOlderThanLocal && (
+              <p className="flex items-start gap-2 text-sm text-warning">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                Bu yedek, bu cihazdaki verinden daha eski görünüyor (yedek: {new Date(importBundle!.dataVersion.updatedAt).toLocaleString('tr-TR')},
+                yerel: {new Date(lastLocalChangeAt!).toLocaleString('tr-TR')}). Üzerine yazarsan yerel değişikliklerini kaybedebilirsin.
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Stat label="Kitaplık" value={importPreview.counts.libraryEntries} />
               <Stat label="İzleme kaydı" value={importPreview.counts.watchRecords} />

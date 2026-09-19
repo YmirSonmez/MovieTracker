@@ -18,7 +18,7 @@ Kişisel film ve dizi takip paneli. TV Time, Letterboxd, Trakt gibi uygulamalard
 - **Profil** — avatar, görünen ad, favori türler, favori yapımlar, üyelik özeti.
 - **Veri Yönetimi** — tüm veriyi JSON (tam yedek) veya CSV (kitaplık tablosu) olarak dışa aktarma; sürüm kontrollü içe aktarma (önizleme + birleştir/değiştir seçimi); örnek veri yükleme; tüm yerel veriyi silme (onaylı).
 - **Kendi TMDB anahtarın** — Ayarlar'dan kendi ücretsiz TMDB anahtarını gir; bu tarayıcıda saklanır, kaydederken canlı doğrulanır ve yedeklerine dahil edilir.
-- **Google Drive'a yedekleme** — kendi Google hesabınla bağlan, tüm verini tek tıkla kendi Drive'ındaki (yalnızca bu uygulamanın erişebildiği) bir dosyaya yedekle ya da oradan geri yükle. Sunucusuz, tamamen istemci taraflı.
+- **Google Drive'a yedekleme (zorunlu giriş)** — uygulamayı kullanmak için önce kendi Google hesabınla bağlanman gerekir; tüm verin tek dosya halinde kendi Drive'ında (yalnızca bu uygulamanın erişebildiği) tutulur. Sunucusuz, tamamen istemci taraflı. Birden fazla cihazdan bağlanırsan, hangi cihazın verisinin daha güncel olduğunu gerçek bir zaman damgasıyla (cihaz kimliği + son değişiklik zamanı) tespit edip çakışan yazmaları engeller.
 - **PWA** — yüklenebilir, çevrimdışı çalışan uygulama kabuğu, servis çalışanı önbellekleme.
 - **Erişilebilirlik** — klavye kısayolları (⌘/Ctrl+K, /, W, L, D, S), odak halkaları, `prefers-reduced-motion` desteği, semantik HTML.
 
@@ -101,17 +101,18 @@ Bundan sonra `main` dalına her push otomatik olarak derler ve `https://KULLANIC
 
 Vite `base: './'` (göreli yol) ile yapılandırıldı, böylece derleme hangi alt dizine (`/REPO_ADI/`) yayınlanırsa yayınlansın hiçbir değişiklik gerekmez. Yönlendirme için `BrowserRouter` yerine bilinçli olarak `HashRouter` seçildi: URL'ler `#/film/123` şeklinde görünür ama bunun karşılığında GitHub Pages'te **hiçbir sunucu taraflı yeniden yazma kuralına ihtiyaç duymadan** her doğrudan link, yer imi ve sayfa yenilemesi %100 güvenilir şekilde çalışır. Bu, "depodan doğrudan yayınlanabilmeli" gereksinimini hiçbir ek yapılandırma riski almadan karşılamanın en sağlam yoludur.
 
-## Google Drive'a Yedekleme (opsiyonel)
+## Google Drive'a Yedekleme (zorunlu giriş)
 
-Ayarlar'daki **Google Drive yedekleme**, kullanıcının kendi Google hesabına bağlanıp verisini kendi Drive'ına yedeklemesini/geri yüklemesini sağlar. Bu, "Google ile giriş yapıp veriyi bir depoya yükleme" fikrinin **sunucusuz** karşılığıdır: GitHub'a yazmak GitHub'ın kendi token'ını gerektirdiğinden (Google kimliği GitHub'ı yetkilendiremez) ve GitHub'ın OAuth değişimi tarayıcıdan doğrudan yapılamadığından, yedekleme hedefi olarak — statik bir sitenin sunucusuz gerçekleştirebildiği — Google Drive seçildi.
+`/giris` sayfası uygulamanın tek girişidir: aktif bir Google Drive oturumu yoksa `AppLayout` her rotayı oraya yönlendirir (bkz. `src/layouts/AppLayout.tsx`). Bu, "Google ile giriş yapıp veriyi bir depoya yükleme" fikrinin **sunucusuz** karşılığıdır: GitHub'a yazmak GitHub'ın kendi token'ını gerektirdiğinden (Google kimliği GitHub'ı yetkilendiremez) ve GitHub'ın OAuth değişimi tarayıcıdan doğrudan yapılamadığından, yedekleme hedefi olarak — statik bir sitenin sunucusuz gerçekleştirebildiği — Google Drive seçildi. Bu deploy'da `GOOGLE_CLIENT_ID` hiç tanımlanmamışsa (aşağıya bak) giriş ekranı bağlanacak hiçbir şey bulamayacağından duvar tamamen devre dışı kalır — kullanıcıyı girişi imkânsız bir ekranda kilitli bırakmamak için.
 
 **Nasıl çalışır:**
 
 - Google Identity Services'in istemci taraflı token akışı kullanılır (`google.accounts.oauth2`) — client secret yok, backend yok.
 - İstenen kapsam yalnızca `drive.file`: uygulama **sadece kendi oluşturduğu** `movie-tracker-backup.json` dosyasını görebilir, kullanıcının Drive'ındaki başka hiçbir dosyaya erişemez.
-- Erişim jetonu yalnızca bellekte (sekme/oturum ömrü boyunca) tutulur; hiçbir zaman IndexedDB'ye ya da dışa aktarılan bir yedeğe yazılmaz. Jeton süresi dolduğunda (~1 saat) bir sonraki yedekleme/geri yükleme işleminde Google tekrar kısa bir onay ister.
+- Erişim jetonu (~1 saatlik ömrüyle) `localStorage`'da önbelleğe alınır, böylece sekmeyi kapatıp tekrar açmak (o saat içinde) yeniden bağlanmayı gerektirmez. Gerçek bir refresh token — sınırsız süreli oturum — Google'ın client secret tutan bir sunucu istemesi yüzünden sadece statik bir GitHub Pages dağıtımıyla mümkün değil; jeton süresi dolduğunda (uygulama açıkken 30 saniyede bir kontrol edilir) giriş ekranına geri dönülür.
 - Yedekleme, aynı `buildExportBundle()`/`applyImport()` mantığını (yerel JSON dışa/içe aktarmayla birebir aynı format ve birleştir/değiştir onay ekranı) kullanır — iki yol da tek bir koddan geçer.
-- Bağlandıktan sonra **elle yedekle demene gerek kalmaz**: kitaplık/puan/liste/profil değişiklikleri birkaç saniye içinde otomatik olarak (debounce'lu, sessizce) Drive'a yedeklenir (`src/services/autoSync.ts`). Erişim jetonu ~1 saat sonra sona erdiğinde ve tarayıcı (haklı olarak) bir tıklama olmadan açılan bir OAuth penceresini engellediğinde, uygulama sessizce başarısız olmak yerine tek seferlik, düşük profilli bir bildirim gösterir: "Google Drive bağlantısı yenilenmeli" + **Yeniden Bağlan** düğmesi (gerçek bir tıklama olduğu için engellenmez).
+- Bağlandıktan sonra **elle yedekle demene gerek kalmaz**: kitaplık/puan/liste/profil değişiklikleri birkaç saniye içinde otomatik olarak (debounce'lu, sessizce) Drive'a yedeklenir (`src/services/autoSync.ts`).
+- Her cihaza kalıcı bir UUID atanır (`src/utils/deviceId.ts`) ve her yedek, verinin gerçekte ne zaman değiştiğini taşır (`dataVersion.updatedAt` — dışa aktarma zamanı değil). Yedeklerken, Drive dosyasının üzerine yazmadan önce ucuz bir metadata kontrolüyle "başka bir cihaz benden sonra buraya yazdı mı" kontrol edilir; öyleyse üzerine yazmak yerine önce o değişikliğin incelenmesi istenir. Geri yüklerken de gelen yedek yereldeki en son değişiklikten daha eskiyse açıkça uyarılırsın.
 
 **Etkinleştirmek için (repo sahibi, tek seferlik):**
 
@@ -122,11 +123,11 @@ Ayarlar'daki **Google Drive yedekleme**, kullanıcının kendi Google hesabına 
 5. Oluşan **Client ID**'yi kopyala (bu bir *secret* değildir — tarayıcı uygulamaları için Client ID'ler herkese açık olacak şekilde tasarlanmıştır).
 6. GitHub reposunda **Settings → Secrets and variables → Actions → Variables** sekmesi → **New repository variable** → adı `GOOGLE_CLIENT_ID`, değeri kopyaladığın Client ID.
 
-Bu değişken tanımlı değilse "Google Drive yedekleme" satırı Ayarlar'da devre dışı ("Kullanılamıyor") görünür ve Veri Yönetimi'ndeki kart hiç gösterilmez — özelliğin yokluğu uygulamanın geri kalanını hiçbir şekilde etkilemez.
+Bu değişken tanımlı değilse giriş duvarı tamamen devre dışı kalır (`isGoogleDriveConfigured()` false döner), "Google Drive yedekleme" satırı Ayarlar'da devre dışı ("Kullanılamıyor") görünür ve Veri Yönetimi'ndeki kart hiç gösterilmez — bu tek deploy'da özellik hiç var olmamış gibi davranır.
 
 ## Veri Mimarisi
 
-Uygulama **yerel öncelikli**dir: tüm kullanıcı verisi tarayıcının IndexedDB deposunda tutulur, hiçbir şey bir sunucuya gönderilmez.
+Kalıcı depo tarayıcının IndexedDB'sidir (hiçbir kullanıcı verisi bizim bir sunucumuza gitmez) ve Google Drive, kullanıcının kendi hesabındaki tek bir dosyaya giden senkron katmanıdır - ikisi de aynı `src/services/storage/` ve `buildExportBundle()`/`applyImport()` mantığından geçer.
 
 ```
 src/services/storage/   # IndexedDB erişiminin YEGANE yeri (db.ts + repository.ts)
@@ -153,8 +154,9 @@ Component'ler her zaman `src/services` üzerinden konuşur; hangi kaynağın kul
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "exportedAt": "2026-09-19T12:00:00.000Z",
+  "dataVersion": { "deviceId": "a3f1...-uuid", "updatedAt": "2026-09-19T11:58:00.000Z" },
   "profile": { "displayName": "...", "favoriteGenreIds": [...] },
   "settings": { "theme": "dark", "...": "..." },
   "apiConfig": { "tmdbApiKey": "..." },
@@ -170,24 +172,24 @@ Component'ler her zaman `src/services` üzerinden konuşur; hangi kaynağın kul
 
 `mediaCache` alanı, izlediğin yapımların başlık/poster gibi bilgilerini de yedeğin içine dahil eder — böylece bir yedeği farklı bir tarayıcıya (TMDB anahtarı olmadan bile) geri yüklediğinde kitaplığın anlamsız ID'ler yerine gerçek başlıklarla görünür. `apiConfig.tmdbApiKey` alanı ise, sen Ayarlar'dan kendi anahtarını girdiysen, o anahtarı da taşır — **bu yüzden yedek dosyanı asla paylaşma veya herkese açık bir depoya yükleme.** İçe aktarma önizlemesi, yedeğin bir anahtar içerip içermediğini her zaman açıkça rozetle gösterir.
 
-İçe aktarma sırasında dosya doğrulanır, sürümü kontrol edilir, kaç kayıt içerdiği önceden gösterilir ve **birleştir** (mevcut verinle harmanla) ya da **değiştir** (mevcut her şeyin yerine geç, onay ister) seçilir. `version` alanı şema değiştikçe otomatik göç için kullanılır — örneğin v1 → v2 geçişinde eksik olan `apiConfig` sessizce boş nesneye tamamlanır.
+İçe aktarma sırasında dosya doğrulanır, sürümü kontrol edilir, kaç kayıt içerdiği önceden gösterilir ve **birleştir** (mevcut verinle harmanla) ya da **değiştir** (mevcut her şeyin yerine geç, onay ister) seçilir — yerel kitaplık zaten tamamen boşsa bu seçim anlamsız olduğundan atlanır ve yedek doğrudan içe aktarılır. `version` alanı şema değiştikçe otomatik göç için kullanılır — örneğin v1 → v2 geçişinde eksik olan `apiConfig`, v2 → v3 geçişinde de eksik olan `dataVersion` sessizce dolduruldu. Gelen yedeğin `dataVersion.updatedAt`'ı bu cihazdaki son değişiklikten daha eskiyse, üzerine yazmadan önce açıkça uyarılırsın.
 
 CSV dışa aktarma, kitaplığının tek bir tablo görünümünü (başlık, tür, durum, puan, tarihler) üretir — hızlı göz atma/paylaşım için; tam yedekleme için her zaman JSON kullanılmalı.
 
-## Gelecekteki Bulut Senkronizasyonu Mimarisi
+## Bulut Senkronizasyonu Mimarisi
 
-Bu sürüm **kasıtlı olarak** hesapsız çalışır; birincil depo her zaman yereldir (IndexedDB). Yukarıdaki **Google Drive'a Yedekleme** bunun istisnası değil, tamamlayıcısıdır: kullanıcı açıkça bağlanmadıkça hiçbir veri cihazdan çıkmaz, bağlandığında da yalnızca kendi Drive hesabına gider — paylaşılan bir arka uç veya hesap sistemi değildir.
+Kimlik doğrulama ve senkron hedefi olarak Google Drive kullanılır (yukarı bak) — ayrı bir hesap sistemi ya da paylaşılan bir arka uç yoktur, veri her zaman kullanıcının **kendi** Drive hesabına gider. Bu, "hesap tabanlı senkron" ile "yerel öncelikli, backend'siz" ihtiyaçları arasında bir orta yoldur: `UserSettings.dataMode: 'local' | 'cloud'` tipinde hâlâ yer ayrılmıştır, ama bugünkü tek gerçek mod fiilen `'cloud'`dur (Drive üzerinden).
 
-Gerçek bir **hesap tabanlı** senkronizasyon (birden çok cihaz arasında otomatik, sürekli eşitleme; `UserSettings.dataMode: 'local' | 'cloud'` tipinde şimdiden yer ayrılmıştır) hâlâ bu sürümün kapsamı dışındadır. İleride eklenirse dokunulması gereken tek katman `src/services/storage/` olacaktır; store'lar ve component'ler değişmeden kalabilir. Planlanan olası yön: Google/Apple/e-posta ile kimlik doğrulama, ardından Supabase/Firebase gibi bir arka uca sürekli senkronizasyon.
+Şu an eksik olan, çoklu cihaz arasında **sürekli/otomatik** (arka planda, kullanıcı hiç görmeden) tam senkronizasyondur — bugünkü model "değişiklik ol, birkaç saniye içinde debounce'lu yedekle" ve "gerektiğinde indirip birleştir/değiştir" arasında, gerçek zamanlı değil. İleride bu genişletilmek istenirse dokunulması gereken tek katman `src/services/storage/` ve `src/services/googleDrive.ts` olacaktır; store'lar ve component'ler büyük ölçüde değişmeden kalabilir.
 
 ## Gizlilik
 
 - Movie Tracker'ın kendi bir sunucusu/arka ucu yoktur; her şey tarayıcının yerel IndexedDB deposunda tutulur.
 - Analitik/izleme kodu yoktur.
 - TMDB anahtarı yapılandırıldığında, yalnızca arama/keşif istekleri (film/dizi meta verisi) doğrudan tarayıcıdan TMDB'ye gider — kişisel izleme geçmişin asla bu isteklere dahil edilmez.
-- Google Drive'a bağlandığında, uygulama yalnızca kendi oluşturduğu tek bir yedek dosyasını görebilir (`drive.file` kapsamı) — Drive'ındaki başka hiçbir dosyaya erişemez. Erişim jetonu yalnızca o oturumda, bellekte tutulur; hiçbir yere yazılmaz.
+- Google Drive'a bağlandığında, uygulama yalnızca kendi oluşturduğu tek bir yedek dosyasını görebilir (`drive.file` kapsamı) — Drive'ındaki başka hiçbir dosyaya erişemez. Erişim jetonu tarayıcıda (`localStorage`) önbelleğe alınır, hiçbir yere (bir sunucuya, IndexedDB'ye, dışa aktarılan bir yedeğe) gönderilmez ve zaten kısa ömürlüdür (~1 saat).
 - Kendi TMDB anahtarını girersen, bu anahtar dışa aktardığın yedeklere dahil edilir (senin tercihinle) — bu yedek dosyalarını paylaşmamaya dikkat et.
-- Verilerin her zaman senindir: tek tıkla tam dışa aktarma her zaman kullanılabilir, hesap kilidi yoktur.
+- Verilerin her zaman senindir: tek tıkla tam dışa aktarma her zaman kullanılabilir. Uygulamayı kullanmak Google Drive'a bağlanmayı gerektirir, ama veri her zaman **senin kendi** Drive hesabına gider — paylaşılan bir hesap sistemi ya da üçüncü taraf bir arka uç yoktur.
 
 ## Proje Yapısı
 

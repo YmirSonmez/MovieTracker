@@ -40,6 +40,21 @@ export function LoginPage() {
           description: 'Üzerine yazmadan önce incelemen için Veri Yönetimi’ne yönlendiriliyorsun.',
         })
         navigate(ROUTES.dataManagement, { replace: true })
+      } else if ('suspiciousDrop' in result || 'remoteChanged' in result) {
+        // Reconnecting on a device that already has a driveFileId (it was
+        // connected before, then disconnected or its token expired) - the
+        // same two safety checks an ongoing backup gets still apply here.
+        try {
+          const { bundle, preview } = await restoreFromDrive()
+          useCloudSyncStore.getState().setPendingImport({ bundle, preview })
+        } catch {
+          // Fetch failed - Veri Yönetimi's own "Drive'dan Geri Yükle" still works.
+        }
+        toast({
+          title: 'suspiciousDrop' in result ? 'Kitaplığın Drive’daki yedekten çok daha küçük' : 'Başka bir cihazdan yeni bir değişiklik var',
+          description: 'Üzerine yazmadan önce incelemen için Veri Yönetimi’ne yönlendiriliyorsun.',
+        })
+        navigate(ROUTES.dataManagement, { replace: true })
       } else {
         // A brand-new account, or a device already reconciled with Drive -
         // either way there's nothing pending review, go straight in.

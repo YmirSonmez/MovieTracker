@@ -12,8 +12,10 @@ export const Z_INDEX = {
 export const APP_NAME = 'Movie Tracker'
 
 /** Bumped whenever the export/import JSON schema changes shape.
- * v2 added `apiConfig` (the user's personal TMDB key, if set). */
-export const EXPORT_SCHEMA_VERSION = 2
+ * v2 added `apiConfig` (the user's personal TMDB key, if set).
+ * v3 added `dataVersion` (which device last touched this, and when) for
+ * sync conflict detection. */
+export const EXPORT_SCHEMA_VERSION = 3
 
 export const STORAGE_DB_NAME = 'movie-tracker'
 export const STORAGE_DB_VERSION = 1
