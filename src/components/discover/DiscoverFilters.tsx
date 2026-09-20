@@ -15,9 +15,11 @@ export function DiscoverFilters({ value, onChange }: DiscoverFiltersProps) {
   const isDefault = JSON.stringify(value) === JSON.stringify(DEFAULT_FILTERS)
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
       <Select
         size="sm"
+        className="w-full sm:w-auto"
+        ariaLabel="Film ya da dizi"
         value={value.type}
         onValueChange={(type) => onChange({ ...value, type: type as FilterState['type'], genreId: 'all' })}
         options={[
@@ -28,18 +30,24 @@ export function DiscoverFilters({ value, onChange }: DiscoverFiltersProps) {
       />
       <Select
         size="sm"
+        className="w-full sm:w-auto"
+        ariaLabel="Tür"
         value={value.genreId}
         onValueChange={(genreId) => onChange({ ...value, genreId })}
         options={[{ value: 'all', label: 'Tüm türler' }, ...genreOptions.map((g) => ({ value: String(g.id), label: g.name }))]}
       />
       <Select
         size="sm"
+        className="w-full sm:w-auto"
+        ariaLabel="Yıl"
         value={value.year}
         onValueChange={(year) => onChange({ ...value, year })}
         options={[{ value: 'all', label: 'Tüm yıllar' }, ...YEARS.map((y) => ({ value: y, label: y }))]}
       />
       <Select
         size="sm"
+        className="w-full sm:w-auto"
+        ariaLabel="En düşük puan"
         value={value.minRating}
         onValueChange={(minRating) => onChange({ ...value, minRating })}
         options={[
@@ -51,16 +59,18 @@ export function DiscoverFilters({ value, onChange }: DiscoverFiltersProps) {
       />
       <Select
         size="sm"
+        className="col-span-2 sm:w-auto"
+        ariaLabel="Sıralama"
         value={value.sort}
         onValueChange={(sort) => onChange({ ...value, sort: sort as FilterState['sort'] })}
         options={[
-          { value: 'popularity', label: 'Popülerlik' },
-          { value: 'rating', label: 'Puana göre' },
-          { value: 'year', label: 'Yıla göre' },
+          { value: 'popularity', label: 'Popülerliğe göre sırala' },
+          { value: 'rating', label: 'Puana göre sırala' },
+          { value: 'year', label: 'Yıla göre sırala' },
         ]}
       />
       {!isDefault && (
-        <Button variant="ghost" size="sm" onClick={() => onChange(DEFAULT_FILTERS)}>
+        <Button variant="ghost" size="sm" className="col-span-2 sm:w-auto" onClick={() => onChange(DEFAULT_FILTERS)}>
           <X className="h-3.5 w-3.5" /> Filtreleri temizle
         </Button>
       )}

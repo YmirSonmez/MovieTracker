@@ -15,11 +15,16 @@ interface SelectProps {
   options: SelectOption[]
   placeholder?: string
   label?: string
+  /** An accessible name for when a visible label would be redundant or take
+   * up space the layout can't spare (e.g. a compact filter bar) - the
+   * currently-selected option text alone often doesn't tell a screen reader
+   * user what the control filters by. Ignored if `label` is also set. */
+  ariaLabel?: string
   className?: string
   size?: 'sm' | 'md'
 }
 
-export function Select({ value, onValueChange, options, placeholder, label, className, size = 'md' }: SelectProps) {
+export function Select({ value, onValueChange, options, placeholder, label, ariaLabel, className, size = 'md' }: SelectProps) {
   const labelId = useId()
   return (
     <div className="flex flex-col gap-2">
@@ -31,6 +36,7 @@ export function Select({ value, onValueChange, options, placeholder, label, clas
       <RadixSelect.Root value={value} onValueChange={onValueChange}>
         <RadixSelect.Trigger
           aria-labelledby={label ? labelId : undefined}
+          aria-label={!label ? ariaLabel : undefined}
           className={cn(
             'inline-flex items-center justify-between gap-2 rounded-md border border-border bg-surface px-3.5 text-sm text-text outline-none transition-colors focus-visible:border-accent data-[placeholder]:text-text-subtle',
             size === 'sm' ? 'h-8 px-3 text-xs' : 'h-10',
