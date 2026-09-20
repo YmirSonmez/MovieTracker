@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { movieService, tvService } from '@/services'
 import { useMediaCacheStore } from '@/store/mediaCacheStore'
-import { ErrorState, RailSkeleton } from '@/components/ui'
+import { Button, ErrorState, RailSkeleton } from '@/components/ui'
 import { MediaRail } from '@/components/media/MediaRail'
 import { MediaGrid } from '@/components/media/MediaGrid'
 import { DiscoverFilters } from './DiscoverFilters'
-import { DEFAULT_FILTERS, type FilterState } from './filterTypes'
+import { DEFAULT_FILTERS, toDiscoverParams, type FilterState } from './filterTypes'
 import { ROUTES } from '@/utils/routes'
 import type { MediaType, MediaSummary } from '@/types/media'
 
@@ -70,20 +70,74 @@ export function CatalogBrowser({ title, lockedType }: CatalogBrowserProps) {
   const loaded = (lockedType !== 'tv' ? movies !== null : true) && (lockedType !== 'movie' ? shows !== null : true)
   const isFiltering = JSON.stringify(filters) !== JSON.stringify(baseFilters)
 
-  const filteredResults = useMemo(() => {
-    if (!loaded) return []
-    let pool: MediaSummary[] = []
-    if (filters.type !== 'tv' && movies) pool = pool.concat(movies.trending, movies.popular, movies.topRated, movies.nowPlaying, movies.upcoming)
-    if (filters.type !== 'movie' && shows) pool = pool.concat(shows.trending, shows.popular, shows.topRated, shows.onTheAir)
-    const deduped = [...new Map(pool.map((i) => [i.id, i])).values()]
-    let result = deduped
-    if (filters.genreId !== 'all') result = result.filter((i) => i.genreIds.includes(Number(filters.genreId)))
-    if (filters.year !== 'all') result = result.filter((i) => i.year === Number(filters.year))
-    if (filters.minRating !== 'all') result = result.filter((i) => (i.voteAverage ?? 0) >= Number(filters.minRating))
-    if (filters.sort === 'rating') result = [...result].sort((a, b) => (b.voteAverage ?? 0) - (a.voteAverage ?? 0))
-    if (filters.sort === 'year') result = [...result].sort((a, b) => (b.year ?? 0) - (a.year ?? 0))
-    return result
-  }, [loaded, movies, shows, filters])
+  // The default (unfiltered) view just shows a first page of each fixed
+  // TMDB list (trending/popular/...) - fine for that, but genre/year/rating
+  // filters need a real, paginated search instead of narrowing that same
+  // small, already-fetched pool (which is how this used to work, and why
+  // picking a genre surfaced almost nothing with no way to see more).
+  const [filterItems, setFilterItems] = useState<MediaSummary[]>([])
+  const [filterPage, setFilterPage] = useState(1)
+  const [filterHasMore, setFilterHasMore] = useState(true)
+  const [filterLoading, setFilterLoading] = useState(false)
+  const [filterLoadingMore, setFilterLoadingMore] = useState(false)
+  const [filterError, setFilterError] = useState(false)
+  const [filterRetryToken, setFilterRetryToken] = useState(0)
+
+  async function fetchFilterPage(page: number): Promise<MediaSummary[]> {
+    const params = toDiscoverParams(filters)
+    const tasks: Promise<MediaSummary[]>[] = []
+    if (filters.type !== 'tv') tasks.push(movieService.discover(params, page))
+    if (filters.type !== 'movie') tasks.push(tvService.discover(params, page))
+    const results = await Promise.all(tasks)
+    return results.flat()
+  }
+
+  useEffect(() => {
+    if (!isFiltering) return
+    let cancelled = false
+    setFilterLoading(true)
+    setFilterError(false)
+    setFilterItems([])
+    setFilterPage(1)
+    setFilterHasMore(true)
+    fetchFilterPage(1)
+      .then((results) => {
+        if (cancelled) return
+        setFilterItems(results)
+        setFilterHasMore(results.length > 0)
+        useMediaCacheStore.getState().cache(results)
+      })
+      .catch(() => {
+        if (!cancelled) setFilterError(true)
+      })
+      .finally(() => {
+        if (!cancelled) setFilterLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch whenever the filter criteria themselves (or filterRetryToken) change
+  }, [isFiltering, filters, filterRetryToken])
+
+  async function loadMoreFiltered() {
+    if (filterLoadingMore) return
+    setFilterLoadingMore(true)
+    try {
+      const nextPage = filterPage + 1
+      const results = await fetchFilterPage(nextPage)
+      setFilterItems((prev) => {
+        const seen = new Set(prev.map((i) => i.id))
+        return [...prev, ...results.filter((i) => !seen.has(i.id))]
+      })
+      setFilterPage(nextPage)
+      setFilterHasMore(results.length > 0)
+      useMediaCacheStore.getState().cache(results)
+    } catch {
+      // Leave existing results in place - the button stays put so the user can just try again.
+    } finally {
+      setFilterLoadingMore(false)
+    }
+  }
 
   return (
     <div className="flex flex-col gap-8 py-6">
@@ -92,12 +146,27 @@ export function CatalogBrowser({ title, lockedType }: CatalogBrowserProps) {
         <DiscoverFilters value={filters} onChange={setFilters} />
       </div>
 
-      {error ? (
+      {isFiltering ? (
+        filterError && filterItems.length === 0 ? (
+          <ErrorState onRetry={() => setFilterRetryToken((t) => t + 1)} />
+        ) : filterLoading ? (
+          <RailSkeleton />
+        ) : (
+          <>
+            <MediaGrid items={filterItems} />
+            {filterHasMore && filterItems.length > 0 && (
+              <div className="flex justify-center">
+                <Button variant="outline" onClick={loadMoreFiltered} loading={filterLoadingMore} disabled={filterLoadingMore}>
+                  Daha Fazla Yükle
+                </Button>
+              </div>
+            )}
+          </>
+        )
+      ) : error ? (
         <ErrorState onRetry={() => setRetryToken((t) => t + 1)} />
       ) : !loaded ? (
         <RailSkeleton />
-      ) : isFiltering ? (
-        <MediaGrid items={filteredResults} />
       ) : (
         <>
           {movies && (

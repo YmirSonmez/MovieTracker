@@ -1,7 +1,7 @@
 import { isLiveDataConfigured } from '@/api/tmdb/client'
 import * as tmdb from '@/api/tmdb/movieApi'
-import { demoCatalog, getMovieDetail as getDemoMovieDetail } from '@/data/catalog'
-import type { MovieDetail } from '@/types/media'
+import { demoCatalog, discoverDemoCatalog, getMovieDetail as getDemoMovieDetail } from '@/data/catalog'
+import type { DiscoverParams, MovieDetail } from '@/types/media'
 import type { MovieService } from './types'
 
 function isDemoId(mediaId: string): boolean {
@@ -31,6 +31,11 @@ export const movieService: MovieService = {
   },
   async getNowPlaying(page = 1) {
     return isLiveDataConfigured() ? tmdb.fetchNowPlayingMovies(page) : demoPage(demoCatalog.movies.nowPlaying(), page)
+  },
+  async discover(params: DiscoverParams, page = 1) {
+    return isLiveDataConfigured()
+      ? tmdb.fetchDiscoverMovies(params, page)
+      : demoPage(discoverDemoCatalog(demoCatalog.movies.popular(), params), page)
   },
   async getDetail(mediaId): Promise<MovieDetail | null> {
     if (isDemoId(mediaId) || !isLiveDataConfigured()) return getDemoMovieDetail(mediaId)

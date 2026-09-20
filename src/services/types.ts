@@ -1,11 +1,4 @@
-import type { MediaSummary, MovieDetail, Person, TVShowDetail } from '@/types/media'
-
-export interface DiscoverFilters {
-  genreId?: number
-  year?: number
-  minRating?: number
-  language?: string
-}
+import type { DiscoverParams, MediaSummary, MovieDetail, Person, TVShowDetail } from '@/types/media'
 
 export interface MovieService {
   getPopular(page?: number): Promise<MediaSummary[]>
@@ -13,6 +6,7 @@ export interface MovieService {
   getTrending(page?: number): Promise<MediaSummary[]>
   getUpcoming(page?: number): Promise<MediaSummary[]>
   getNowPlaying(page?: number): Promise<MediaSummary[]>
+  discover(params: DiscoverParams, page?: number): Promise<MediaSummary[]>
   getDetail(mediaId: string): Promise<MovieDetail | null>
 }
 
@@ -21,6 +15,7 @@ export interface TVService {
   getTopRated(page?: number): Promise<MediaSummary[]>
   getTrending(page?: number): Promise<MediaSummary[]>
   getOnTheAir(page?: number): Promise<MediaSummary[]>
+  discover(params: DiscoverParams, page?: number): Promise<MediaSummary[]>
   getDetail(mediaId: string): Promise<TVShowDetail | null>
 }
 

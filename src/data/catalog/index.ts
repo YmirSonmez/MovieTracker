@@ -1,7 +1,7 @@
 import { MOVIES } from './movies'
 import { SHOWS } from './shows'
 import { toSummary } from './builders'
-import type { MediaSummary, MovieDetail, TVShowDetail } from '@/types/media'
+import type { DiscoverParams, MediaSummary, MovieDetail, TVShowDetail } from '@/types/media'
 
 export { MOVIES, SHOWS }
 
@@ -53,6 +53,19 @@ export const demoCatalog = {
     trending: () => sortByRatingDesc(showSummaries).slice(0, 6),
     onTheAir: () => showSummaries.filter((s) => SHOWS.find((sh) => sh.id === s.id)?.status === 'returning'),
   },
+}
+
+/** The demo-mode equivalent of a TMDB /discover call - filters/sorts over
+ * the full demo pool for that media type instead of TMDB's real catalog,
+ * since there's no live API to query without a key. */
+export function discoverDemoCatalog(items: MediaSummary[], params: DiscoverParams): MediaSummary[] {
+  let result = items
+  if (params.genreId !== undefined) result = result.filter((i) => i.genreIds.includes(params.genreId!))
+  if (params.year !== undefined) result = result.filter((i) => i.year === params.year)
+  if (params.minRating !== undefined) result = result.filter((i) => (i.voteAverage ?? 0) >= params.minRating!)
+  if (params.sort === 'rating') result = sortByRatingDesc(result)
+  if (params.sort === 'year') result = sortByYearDesc(result)
+  return result
 }
 
 export function searchDemoCatalog(query: string): { movies: MediaSummary[]; shows: MediaSummary[] } {

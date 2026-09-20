@@ -8,6 +8,16 @@ export interface Genre {
   name: string
 }
 
+/** Criteria for a filtered, paginated browse (Discover's genre/year/rating
+ * filters) - shared by the api and services layers so neither has to depend
+ * on the other's types module. */
+export interface DiscoverParams {
+  genreId?: number
+  year?: number
+  minRating?: number
+  sort: 'popularity' | 'rating' | 'year'
+}
+
 export interface Person {
   id: string
   name: string

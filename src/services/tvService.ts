@@ -1,7 +1,7 @@
 import { isLiveDataConfigured } from '@/api/tmdb/client'
 import * as tmdb from '@/api/tmdb/tvApi'
-import { demoCatalog, getTVDetail as getDemoTVDetail } from '@/data/catalog'
-import type { TVShowDetail } from '@/types/media'
+import { demoCatalog, discoverDemoCatalog, getTVDetail as getDemoTVDetail } from '@/data/catalog'
+import type { DiscoverParams, TVShowDetail } from '@/types/media'
 import type { TVService } from './types'
 
 function isDemoId(mediaId: string): boolean {
@@ -28,6 +28,11 @@ export const tvService: TVService = {
   },
   async getOnTheAir(page = 1) {
     return isLiveDataConfigured() ? tmdb.fetchOnTheAirTV(page) : demoPage(demoCatalog.tv.onTheAir(), page)
+  },
+  async discover(params: DiscoverParams, page = 1) {
+    return isLiveDataConfigured()
+      ? tmdb.fetchDiscoverTV(params, page)
+      : demoPage(discoverDemoCatalog(demoCatalog.tv.popular(), params), page)
   },
   async getDetail(mediaId): Promise<TVShowDetail | null> {
     if (isDemoId(mediaId) || !isLiveDataConfigured()) return getDemoTVDetail(mediaId)
