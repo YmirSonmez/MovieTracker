@@ -1,107 +1,128 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { CloudUpload } from 'lucide-react'
-import { useCloudSyncStore } from '@/store/cloudSyncStore'
-import { connectGoogleDrive, backupToDrive, restoreFromDrive, isGoogleDriveConfigured, GoogleDriveError } from '@/services/googleDrive'
-import { toast } from '@/store/toastStore'
-import { Button, Card } from '@/components/ui'
+import { Navigate } from 'react-router-dom'
+import { AlertTriangle, EyeOff, RefreshCw, WifiOff } from 'lucide-react'
+import { Button } from '@/components/ui'
+import { beginSignIn, getAccount, isGoogleConfigured } from '@/services/auth/google'
+import { useSyncStore } from '@/store/syncStore'
+import { useOnline } from '@/hooks/useOnline'
+import { publicUrl } from '@/utils/publicUrl'
 import { APP_NAME } from '@/utils/constants'
 import { ROUTES } from '@/utils/routes'
 
+const POINTS = [
+  {
+    icon: RefreshCw,
+    title: 'Her cihazda aynı kitaplık',
+    text: 'Telefonda işaretlediğin bölüm bilgisayarında da işaretli. Eşitleme kendiliğinden olur.',
+  },
+  {
+    icon: EyeOff,
+    title: 'Veriler senin Drive’ında',
+    text: 'Drive’ında yalnızca bu uygulamanın görebildiği gizli bir klasörde durur. Sunucumuz yok.',
+  },
+  {
+    icon: WifiOff,
+    title: 'İnternetsiz de çalışır',
+    text: 'Bağlantı yokken yaptıkların cihazda kalır, bağlanınca Drive’a gider.',
+  },
+]
+
 /**
- * The only way into the app - AppLayout redirects here whenever there's no
- * active Google Drive session (see requireDriveAuth). Deliberately outside
- * AppLayout's own chrome (no nav, no bottom bar): there is nothing to
- * navigate to yet. Built as a list of connection methods rather than a
- * single button so a second one (should this app ever grow beyond a single
- * personal Google account) has an obvious place to go.
+ * The one screen shown to a device that isn't linked to an account yet.
+ * Outside AppLayout's chrome on purpose - there's nothing to navigate to.
+ * Signing in leaves the page for Google and comes back to the app root
+ * (see services/auth/google.ts); errors from that round trip land here.
  */
 export function LoginPage() {
-  const navigate = useNavigate()
-  const [connecting, setConnecting] = useState(false)
-  const driveConfigured = isGoogleDriveConfigured()
+  const [leaving, setLeaving] = useState(false)
+  const failure = useSyncStore((s) => s.authFailure)
+  const online = useOnline()
+  const configured = isGoogleConfigured()
 
-  async function handleConnect() {
-    setConnecting(true)
-    try {
-      await connectGoogleDrive()
-      const result = await backupToDrive()
-      if ('conflict' in result) {
-        // Fetch the existing backup now (harmless, it's a download) and hand
-        // it to Data Management so reviewing it doesn't take a second trip.
-        try {
-          const { bundle, preview } = await restoreFromDrive()
-          useCloudSyncStore.getState().setPendingImport({ bundle, preview })
-        } catch {
-          // Fetch failed - Veri Yönetimi's own "Drive'dan Geri Yükle" still works.
-        }
-        toast({
-          title: 'Drive’da zaten bir yedeğin var',
-          description: 'Üzerine yazmadan önce incelemen için Veri Yönetimi’ne yönlendiriliyorsun.',
-        })
-        navigate(ROUTES.dataManagement, { replace: true })
-      } else if ('suspiciousDrop' in result || 'remoteChanged' in result) {
-        // Reconnecting on a device that already has a driveFileId (it was
-        // connected before, then disconnected or its token expired) - the
-        // same two safety checks an ongoing backup gets still apply here.
-        try {
-          const { bundle, preview } = await restoreFromDrive()
-          useCloudSyncStore.getState().setPendingImport({ bundle, preview })
-        } catch {
-          // Fetch failed - Veri Yönetimi's own "Drive'dan Geri Yükle" still works.
-        }
-        toast({
-          title: 'suspiciousDrop' in result ? 'Kitaplığın Drive’daki yedekten çok daha küçük' : 'Başka bir cihazdan yeni bir değişiklik var',
-          description: 'Üzerine yazmadan önce incelemen için Veri Yönetimi’ne yönlendiriliyorsun.',
-        })
-        navigate(ROUTES.dataManagement, { replace: true })
-      } else {
-        // A brand-new account, or a device already reconciled with Drive -
-        // either way there's nothing pending review, go straight in.
-        toast({ title: 'Google Drive’a bağlandı', variant: 'success' })
-        navigate(ROUTES.home, { replace: true })
-      }
-    } catch (e) {
-      toast({ title: 'Bağlantı başarısız oldu', description: e instanceof GoogleDriveError ? e.message : undefined, variant: 'danger' })
-    } finally {
-      setConnecting(false)
-    }
+  if (configured && getAccount()) return <Navigate to={ROUTES.home} replace />
+
+  function signIn() {
+    setLeaving(true)
+    useSyncStore.setState({ authFailure: null })
+    beginSignIn({ returnTo: ROUTES.home, forceConsent: failure?.reason === 'scope' })
   }
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center gap-8 bg-bg px-4">
-      <div className="flex flex-col items-center gap-3">
-        <svg width="48" height="48" viewBox="0 0 100 100" aria-hidden="true">
-          <rect width="100" height="100" rx="24" fill="#16161a" />
-          <circle cx="50" cy="50" r="32" fill="none" stroke="#f0a93a" strokeWidth="8" strokeLinecap="round" strokeDasharray="90 201" />
-          <path d="M42 35 L68 50 L42 65 Z" fill="#f0a93a" />
-        </svg>
-        <h1 className="text-xl font-bold text-text">{APP_NAME}</h1>
-        <p className="max-w-xs text-center text-sm text-text-muted">
-          Verilerin kendi Google Drive hesabında saklanır. Devam etmek için bağlan.
+    <div className="min-h-dvh bg-bg text-text">
+      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-6 pb-8 pt-[max(3rem,env(safe-area-inset-top))]">
+        <div className="flex items-center gap-2.5">
+          <svg width="32" height="32" viewBox="0 0 100 100" aria-hidden="true">
+            <rect width="100" height="100" rx="24" fill="var(--color-surface)" stroke="var(--color-border)" />
+            <circle
+              cx="50"
+              cy="50"
+              r="32"
+              fill="none"
+              stroke="var(--color-accent)"
+              strokeWidth="8"
+              strokeLinecap="round"
+              strokeDasharray="176 201"
+              transform="rotate(-90 50 50)"
+            />
+            <path d="M42 35 L68 50 L42 65 Z" fill="var(--color-accent)" />
+          </svg>
+          <span className="text-base font-bold tracking-tight">{APP_NAME}</span>
+        </div>
+
+        <div className="flex flex-1 flex-col justify-center py-10">
+          <h1 className="text-balance text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
+            İzlediğin her şey, tüm cihazlarında.
+          </h1>
+          <p className="mt-3 text-pretty text-text-muted">
+            Google hesabınla bir kez giriş yap. Kitaplığın, puanların ve listelerin kendi Google Drive’ında saklanır.
+          </p>
+
+          <div className="mt-8 flex flex-col gap-3">
+            {configured ? (
+              <>
+                <Button size="lg" className="w-full" onClick={signIn} loading={leaving} disabled={leaving || !online}>
+                  {failure?.reason === 'scope' ? 'İzin vererek tekrar dene' : 'Google ile devam et'}
+                </Button>
+                {!online && (
+                  <p className="flex items-center gap-2 text-sm text-text-subtle">
+                    <WifiOff className="h-4 w-4 shrink-0" /> Giriş için internet bağlantısı gerekiyor.
+                  </p>
+                )}
+                {failure && (
+                  <p role="alert" className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-text">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+                    {failure.message}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="rounded-md border border-border bg-surface p-4 text-sm text-text-muted">
+                Bu dağıtımda Google girişi yapılandırılmamış. Yayınlamadan önce bir Google Client ID tanımlanmalı (README’ye bak).
+              </p>
+            )}
+          </div>
+
+          <ul className="mt-10 flex flex-col gap-5">
+            {POINTS.map(({ icon: Icon, title, text }) => (
+              <li key={title} className="flex gap-3">
+                <Icon className="mt-0.5 h-5 w-5 shrink-0 text-accent" strokeWidth={1.75} />
+                <div>
+                  <p className="text-sm font-medium">{title}</p>
+                  <p className="mt-0.5 text-sm text-text-subtle">{text}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <p className="text-xs text-text-subtle">
+          Devam ederek{' '}
+          <a href={publicUrl('privacy.html')} className="text-text-muted underline underline-offset-2 hover:text-text">
+            Gizlilik Politikası
+          </a>
+          ’nı kabul etmiş olursun.
         </p>
       </div>
-
-      <Card className="flex w-full max-w-sm flex-col gap-4 p-5">
-        {driveConfigured ? (
-          <>
-            <div className="flex items-center gap-3">
-              <CloudUpload className="h-5 w-5 shrink-0 text-accent" />
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-text">Google Drive</p>
-                <p className="text-xs text-text-subtle">Kendi hesabında, sadece bu uygulamanın oluşturduğu dosyada.</p>
-              </div>
-            </div>
-            <Button onClick={handleConnect} loading={connecting} disabled={connecting} className="w-full">
-              Google ile Bağlan
-            </Button>
-          </>
-        ) : (
-          <p className="text-sm text-text-muted">
-            Bu dağıtımda Google bağlantısı yapılandırılmamış - devam etmek için önce bir Google Client ID tanımlanmalı.
-          </p>
-        )}
-      </Card>
     </div>
   )
 }

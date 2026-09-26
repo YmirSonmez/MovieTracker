@@ -45,9 +45,10 @@
           erişebildiği özel bir klasördür. Drive'ındaki diğer dosyalarını göremeyiz.
         </li>
         <li>
-          <strong>Uygulamanın oluşturduğu dosyalar</strong> (<code>drive.file</code>): Yalnızca uygulamanın daha önceki bir
-          sürümünün oluşturduğu <code>movie-tracker-backup.json</code> yedeğini bir kereye mahsus yeni sisteme taşımak için.
-          Başka hiçbir dosyana erişilmez.
+          <strong>Uygulamanın oluşturduğu dosyalar</strong> (<code>drive.file</code>): Yeni kullanıcılardan istenmez. Yalnızca
+          uygulamanın önceki bir sürümünü kullanıp bu izni o sürüme vermiş olanlar için, o sürümün oluşturduğu
+          <code>movie-tracker-backup.json</code> yedeğini bir kereye mahsus yeni sisteme taşımakta kullanılır. Başka hiçbir
+          dosyana erişilmez.
         </li>
       </ul>
 
@@ -65,8 +66,8 @@
 
       <h2>Verilerini nasıl silersin?</h2>
       <ul>
-        <li><strong>Tüm cihazlardan ve Drive'dan:</strong> Uygulamada Veri Yönetimi → "Tüm verimi sil".</li>
-        <li><strong>Sadece bu cihazdan:</strong> Ayarlar → "Çıkış yap" → "Bu cihazdaki verileri de sil".</li>
+        <li><strong>Tüm cihazlardan ve Drive'dan:</strong> Ayarlar → Veri Yönetimi → "Tüm verimi sil".</li>
+        <li><strong>Sadece bu cihazdan:</strong> Ayarlar → "Çıkış yap". Bu cihazdaki kopya silinir, Drive'daki veri kalır.</li>
         <li>
           <strong>Uygulamanın erişimini kaldırmak:</strong>
           <a href="https://myaccount.google.com/connections">Google Hesabı → Üçüncü taraf bağlantıları</a> sayfasından
@@ -105,8 +106,9 @@
           across your devices. This is a hidden folder only this app can access; we cannot see any of your other Drive files.
         </li>
         <li>
-          <strong>Files created by the app</strong> (<code>drive.file</code>): only to migrate the
-          <code>movie-tracker-backup.json</code> backup created by an earlier version of the app, once.
+          <strong>Files created by the app</strong> (<code>drive.file</code>): never requested from new users. Only if you
+          granted it to an earlier version of the app, it is used once to migrate the
+          <code>movie-tracker-backup.json</code> backup that version created.
         </li>
       </ul>
 
@@ -120,7 +122,8 @@
 
       <h2>Deleting your data</h2>
       <p>
-        Everywhere: Data Management → "Tüm verimi sil". This device only: Settings → "Çıkış yap" → delete local data.
+        Everywhere: Settings → Data Management → "Tüm verimi sil". This device only: Settings → "Çıkış yap" (removes this
+        device's copy; your Drive data stays).
         Revoke the app's access at any time from
         <a href="https://myaccount.google.com/connections">Google Account → Third-party connections</a>.
       </p>

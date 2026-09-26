@@ -216,7 +216,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const existing = get().entries[mediaId]
       if (existing) updates.push({ ...existing, watchlistOrder: index, updatedAt: timestamp })
     })
-    await Promise.all(updates.map((e) => storage.putLibraryEntry(e)))
+    await storage.putLibraryEntries(updates)
     set((state) => {
       const entries = { ...state.entries }
       updates.forEach((e) => (entries[e.mediaId] = e))
@@ -235,7 +235,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   async removeFromLibrary(mediaId) {
-    await Promise.all([storage.deleteLibraryEntry(mediaId), storage.deleteWatchRecordsForMedia(mediaId)])
+    await Promise.all([
+      storage.deleteLibraryEntry(mediaId),
+      storage.deleteWatchRecordsForMedia(mediaId),
+      storage.deleteEpisodeProgressForShow(mediaId),
+    ])
     set((state) => {
       const entries = { ...state.entries }
       delete entries[mediaId]

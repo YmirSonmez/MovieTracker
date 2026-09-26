@@ -13,19 +13,9 @@ export const APP_NAME = 'Movie Tracker'
 
 /** Bumped whenever the export/import JSON schema changes shape.
  * v2 added `apiConfig` (the user's personal TMDB key, if set).
- * v3 added `dataVersion` (which device last touched this, and when) for
- * sync conflict detection. */
-export const EXPORT_SCHEMA_VERSION = 3
+ * v3 added `dataVersion` for the previous Drive sync design.
+ * v4 dropped it again - sync no longer goes through export files. */
+export const EXPORT_SCHEMA_VERSION = 4
 
 export const STORAGE_DB_NAME = 'movie-tracker'
-export const STORAGE_DB_VERSION = 1
-
-/** Local-only hint so Settings can label "demo data is loaded" - not a
- * source of truth for what data exists, just a label. */
-export const DEMO_DATA_FLAG_KEY = 'movie-tracker-demo-loaded'
-
-/** Caches the short-lived Google Drive access token (and the email it
- * belongs to) across page reloads/tab closes, so re-visiting within its
- * ~1 hour lifetime doesn't force reconnecting. Never contains a refresh
- * token - the token this holds still expires exactly as fast either way. */
-export const DRIVE_TOKEN_STORAGE_KEY = 'movie-tracker-drive-token'
+export const STORAGE_DB_VERSION = 2

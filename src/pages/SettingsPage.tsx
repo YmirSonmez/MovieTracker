@@ -9,7 +9,7 @@ import { ROUTES } from '@/utils/routes'
 import { Badge, Button, Select, Switch } from '@/components/ui'
 import { SettingsRow, SettingsSection } from '@/components/settings/SettingsRow'
 import { TmdbKeyField } from '@/components/settings/TmdbKeyField'
-import { GoogleDriveSyncRow } from '@/components/settings/GoogleDriveSyncRow'
+import { AccountSection } from '@/components/settings/AccountSection'
 import type { ThemePreference } from '@/types/user'
 
 export function SettingsPage() {
@@ -25,6 +25,8 @@ export function SettingsPage() {
   return (
     <div className="flex max-w-2xl flex-col gap-8 py-6">
       <h1 className="text-2xl font-bold text-text">Ayarlar</h1>
+
+      <AccountSection />
 
       {canInstall && (
         <SettingsSection title="Uygulama">
@@ -93,41 +95,13 @@ export function SettingsPage() {
         />
         <TmdbKeyField />
         <SettingsRow
-          title="Dışa/içe aktarma ve yedekleme"
-          description="Kitaplığını JSON/CSV olarak indir ya da geri yükle"
+          title="Dışa/içe aktarma"
+          description="Kitaplığını JSON/CSV olarak indir, bir dosyadan geri yükle ya da tüm verini sil"
           control={
             <Button size="sm" variant="outline" asChild>
               <Link to={ROUTES.dataManagement}>
                 <Database className="h-3.5 w-3.5" /> Veri Yönetimi
               </Link>
-            </Button>
-          }
-        />
-      </SettingsSection>
-
-      <SettingsSection title="Hesap">
-        <SettingsRow
-          title="Depolama modu"
-          description="Verilerin yalnızca bu tarayıcıda, cihazında saklanıyor."
-          control={<Badge variant="accent">Yerel</Badge>}
-        />
-        <GoogleDriveSyncRow />
-      </SettingsSection>
-
-      <SettingsSection title="Gizlilik">
-        <div className="flex flex-col gap-1.5 py-3 text-sm text-text-muted">
-          <p>Movie Tracker&apos;ın kendi bir sunucusu yoktur. Her şey bu tarayıcının yerel deposunda (IndexedDB) tutulur.</p>
-          <p>
-            Kendi isteğinle bağladığında veri yalnızca doğrudan iki yere gider: film/dizi bilgisi için TMDB&apos;ye, yedekleme
-            için ise kendi Google Drive hesabına - ikisi de bizim değil senin bağlantın.
-          </p>
-        </div>
-        <SettingsRow
-          title="Yerel veriyi temizle"
-          description="Tüm kitaplığını kalıcı olarak siler"
-          control={
-            <Button size="sm" variant="ghost" asChild>
-              <Link to={ROUTES.dataManagement}>Veri Yönetimi&apos;ne git</Link>
             </Button>
           }
         />

@@ -10,16 +10,6 @@ import type {
 } from './watch'
 import type { ApiConfig, UserProfile, UserSettings } from './user'
 
-/** Identifies which device produced a bundle and when its underlying data
- * was actually last changed (not export time - a device can export the
- * same unchanged data any number of times). Lets a sync compare two
- * bundles and know which one is actually newer, instead of guessing from
- * record counts or upload order. */
-export interface DataVersion {
-  deviceId: string
-  updatedAt: string
-}
-
 /**
  * The full portable snapshot of a user's data. This is the ONLY format
  * import/export ever reads or writes - every store's data lives in here so
@@ -38,7 +28,6 @@ export interface DataVersion {
 export interface MovieTrackerExport {
   version: number
   exportedAt: string
-  dataVersion: DataVersion
   profile: UserProfile
   settings: UserSettings
   apiConfig: ApiConfig

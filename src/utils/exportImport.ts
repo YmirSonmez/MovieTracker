@@ -4,11 +4,9 @@ import { useListsStore } from '@/store/listsStore'
 import { useProfileStore } from '@/store/profileStore'
 import { useMediaCacheStore } from '@/store/mediaCacheStore'
 import { useApiConfigStore } from '@/store/apiConfigStore'
-import { useCloudSyncStore } from '@/store/cloudSyncStore'
 import { storage } from '@/services/storage/repository'
 import { hydrateAllStores } from '@/store/init'
 import { EXPORT_SCHEMA_VERSION } from '@/utils/constants'
-import { getDeviceId } from '@/utils/deviceId'
 import type { MovieTrackerExport, ImportPreview, ImportStrategy } from '@/types/export'
 
 export function buildExportBundle(): MovieTrackerExport {
@@ -18,15 +16,10 @@ export function buildExportBundle(): MovieTrackerExport {
   const profileState = useProfileStore.getState()
   const mediaCache = useMediaCacheStore.getState()
   const apiConfigState = useApiConfigStore.getState()
-  const cloudSyncMeta = useCloudSyncStore.getState().meta
 
   return {
     version: EXPORT_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
-    // Falls back to "now" only for a device that has never recorded a local
-    // change (e.g. its very first-ever backup) - there's nothing older to
-    // lose by treating that as current.
-    dataVersion: { deviceId: getDeviceId(), updatedAt: cloudSyncMeta.lastLocalChangeAt ?? new Date().toISOString() },
     profile: profileState.profile,
     settings: profileState.settings,
     apiConfig: apiConfigState.config,
@@ -113,14 +106,11 @@ export function parseImportBundle(raw: string): MovieTrackerExport {
     throw new ImportValidationError('Bu yedek, uygulamanın daha yeni bir sürümünden alınmış. Lütfen uygulamayı güncelle.')
   }
   // v1 backups have no apiConfig field at all - default it to empty rather
-  // than fail the import. v2 backups have no dataVersion - treat them as
-  // an unknown, unmatchable device so sync conflict detection just skips
-  // comparing rather than failing the import. Future migrations slot in
-  // here, keyed off bundle.version, before returning.
+  // than fail the import. v3's dataVersion is simply ignored. Future
+  // migrations slot in here, keyed off bundle.version, before returning.
   return {
     version: bundle.version,
     exportedAt: bundle.exportedAt ?? new Date().toISOString(),
-    dataVersion: bundle.dataVersion ?? { deviceId: 'legacy', updatedAt: bundle.exportedAt ?? new Date(0).toISOString() },
     profile: bundle.profile as MovieTrackerExport['profile'],
     settings: bundle.settings as MovieTrackerExport['settings'],
     apiConfig: bundle.apiConfig ?? {},
@@ -152,35 +142,10 @@ export function buildImportPreview(bundle: MovieTrackerExport): ImportPreview {
   }
 }
 
+/** Both strategies write through the repository as ordinary local edits,
+ * so the result syncs to every other device like any other change. */
 export async function applyImport(bundle: MovieTrackerExport, strategy: ImportStrategy): Promise<void> {
-  if (strategy === 'replace') {
-    await storage.replaceAll({
-      libraryEntries: bundle.libraryEntries,
-      watchRecords: bundle.watchRecords,
-      episodeProgress: bundle.episodeProgress,
-      ratings: bundle.ratings,
-      reviews: bundle.reviews,
-      favoritePeople: bundle.favoritePeople,
-      lists: bundle.lists,
-      mediaCache: bundle.mediaCache,
-      profile: bundle.profile,
-      settings: bundle.settings,
-      apiConfig: bundle.apiConfig,
-    })
-  } else {
-    await Promise.all([
-      ...bundle.libraryEntries.map((e) => storage.putLibraryEntry(e)),
-      ...bundle.watchRecords.map((r) => storage.putWatchRecord(r)),
-      ...bundle.episodeProgress.map((p) => storage.putEpisodeProgress(p)),
-      ...bundle.ratings.map((r) => storage.putRating(r)),
-      ...bundle.reviews.map((r) => storage.putReview(r)),
-      ...bundle.favoritePeople.map((f) => storage.putFavoritePerson(f)),
-      ...bundle.lists.map((l) => storage.putList(l)),
-      storage.cacheMedia(bundle.mediaCache),
-      // A merge never erases an existing personal key with an absent one -
-      // only apply it when the backup actually carried one.
-      ...(bundle.apiConfig?.tmdbApiKey ? [storage.putApiConfig(bundle.apiConfig)] : []),
-    ])
-  }
+  if (strategy === 'replace') await storage.importReplace(bundle)
+  else await storage.importMerge(bundle)
   await hydrateAllStores()
 }

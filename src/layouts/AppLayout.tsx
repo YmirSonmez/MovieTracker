@@ -6,67 +6,75 @@ import { BottomNav } from '@/components/nav/BottomNav'
 import { BootSplash } from '@/components/nav/BootSplash'
 import { CommandPalette } from '@/components/CommandPalette'
 import { Toaster } from '@/components/ui'
-import { hydrateAllStores } from '@/store/init'
+import { bootStores } from '@/store/init'
 import { useProfileStore } from '@/store/profileStore'
-import { useCloudSyncStore } from '@/store/cloudSyncStore'
+import { useSyncStore } from '@/store/syncStore'
+import { toast } from '@/store/toastStore'
 import { applyTheme, watchSystemTheme } from '@/utils/theme'
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts'
-import { startAutoSync } from '@/services/autoSync'
-import { preloadGoogleIdentity, hasValidDriveToken, isGoogleDriveConfigured } from '@/services/googleDrive'
+import { getAccessToken, getAccount, isGoogleConfigured } from '@/services/auth/google'
+import { hasSyncedBefore, startSync, syncNow } from '@/services/sync/engine'
 import { ROUTES } from '@/utils/routes'
 
-/** How often to notice a token that expired while the tab stayed open and
- * send the visitor back to the login screen - doesn't need to be tighter
- * than this given tokens last about an hour. */
-const AUTH_RECHECK_MS = 30_000
+/** A first-time device waits this long at most for its data before showing
+ * the app anyway (sync carries on in the background). */
+const FIRST_SYNC_WAIT_MS = 20_000
 
 export function AppLayout() {
   const [ready, setReady] = useState(false)
-  const [authorized, setAuthorized] = useState(false)
+  const [fetchingAccount, setFetchingAccount] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const connectedEmail = useCloudSyncStore((s) => s.connectedEmail)
+  const theme = useProfileStore((s) => s.settings.theme)
+  // The only gate: is this device linked to an account at all? An expired
+  // token never locks anyone out - local data stays usable and sync
+  // catches up once the session is renewed.
+  const signedOut = isGoogleConfigured() && !getAccount()
 
   useEffect(() => {
+    if (signedOut) return
     let cancelled = false
-    // Synchronous (restores a still-valid cached token from localStorage,
-    // if any) - by the time `ready` flips true below, `authorized` already
-    // reflects it, so there's no flash of the login screen for someone
-    // who's still actually signed in.
-    preloadGoogleIdentity()
-    setAuthorized(!isGoogleDriveConfigured() || hasValidDriveToken())
-    hydrateAllStores().then(() => {
-      if (!cancelled) {
-        setReady(true)
-        startAutoSync()
+    let stopSync: (() => void) | undefined
+    void (async () => {
+      await bootStores()
+      if (cancelled) return
+      const firstTime = isGoogleConfigured() && Boolean(getAccessToken()) && navigator.onLine && !(await hasSyncedBefore())
+      if (cancelled) return
+      setFetchingAccount(firstTime)
+      setReady(true)
+      stopSync = startSync()
+      if (firstTime) {
+        await Promise.race([syncNow(), new Promise((resolve) => setTimeout(resolve, FIRST_SYNC_WAIT_MS))])
+        if (!cancelled) setFetchingAccount(false)
       }
-    })
+    })()
     return () => {
       cancelled = true
+      stopSync?.()
     }
-  }, [])
+  }, [signedOut])
 
-  // Re-checks on every connect/disconnect (immediate) and on a timer
-  // (catches a token quietly expiring while the tab stays open).
-  useEffect(() => {
-    setAuthorized(!isGoogleDriveConfigured() || hasValidDriveToken())
-  }, [connectedEmail])
-
-  useEffect(() => {
-    if (!isGoogleDriveConfigured()) return
-    const id = setInterval(() => setAuthorized(hasValidDriveToken()), AUTH_RECHECK_MS)
-    return () => clearInterval(id)
-  }, [])
-
+  // Re-applied whenever the setting changes - including when it arrives
+  // from another device.
   useEffect(() => {
     if (!ready) return
-    applyTheme(useProfileStore.getState().settings.theme)
+    applyTheme(theme)
     return watchSystemTheme(() => useProfileStore.getState().settings.theme)
-  }, [ready])
+  }, [ready, theme])
+
+  // A renewal the user started themselves (the "Yeniden bağlan" button)
+  // that didn't work. Silent renewals fail quietly: the sync chip says it.
+  useEffect(() => {
+    const failure = useSyncStore.getState().authFailure
+    if (!failure || failure.silent || signedOut) return
+    useSyncStore.setState({ authFailure: null })
+    toast({ title: 'Google oturumu yenilenemedi', description: failure.message, variant: 'danger' })
+  }, [signedOut])
 
   useGlobalShortcuts(() => setPaletteOpen(true))
 
+  if (signedOut) return <Navigate to={ROUTES.login} replace />
   if (!ready) return <BootSplash />
-  if (!authorized) return <Navigate to={ROUTES.login} replace />
+  if (fetchingAccount) return <BootSplash message="Verilerin Google Drive’dan getiriliyor…" />
 
   return (
     <div className="min-h-dvh bg-bg text-text">

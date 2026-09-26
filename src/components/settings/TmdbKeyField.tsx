@@ -38,7 +38,7 @@ export function TmdbKeyField() {
       <div>
         <p className="text-sm font-medium text-text">Kendi TMDB API anahtarın</p>
         <p className="mt-0.5 text-xs text-text-subtle">
-          Bu tarayıcıda saklanır ve dışa aktardığın yedeklere dahil edilir - yedek dosyanı kimseyle paylaşma.{' '}
+          Hesabınla birlikte diğer cihazlarına da eşitlenir ve dışa aktardığın JSON dosyasına dahil edilir - o dosyayı kimseyle paylaşma.{' '}
           <a
             href="https://www.themoviedb.org/settings/api"
             target="_blank"

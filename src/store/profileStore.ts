@@ -29,8 +29,10 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     const [storedProfile, storedSettings] = await Promise.all([storage.getProfile(), storage.getSettings()])
     const profile = storedProfile ?? { ...DEFAULT_PROFILE, joinedAt: new Date().toISOString() }
     const settings = storedSettings ?? DEFAULT_SETTINGS
-    if (!storedProfile) await storage.putProfile(profile)
-    if (!storedSettings) await storage.putSettings(settings)
+    // Written as "initial" defaults: they must never outrank the real
+    // profile/settings arriving from another device on first sync.
+    if (!storedProfile) await storage.putProfile(profile, { initial: true })
+    if (!storedSettings) await storage.putSettings(settings, { initial: true })
     set({ profile, settings, hydrated: true })
   },
 

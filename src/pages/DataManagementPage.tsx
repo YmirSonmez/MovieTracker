@@ -1,20 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, CloudDownload, CloudUpload, Download, History, KeyRound, RotateCcw, Sparkles, Trash2, Upload } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { AlertTriangle, Download, KeyRound, Trash2, Upload } from 'lucide-react'
 import { useLibraryStore } from '@/store/libraryStore'
 import { useRatingsStore } from '@/store/ratingsStore'
 import { useListsStore } from '@/store/listsStore'
-import { useCloudSyncStore } from '@/store/cloudSyncStore'
-import { loadDemoData, clearDemoData } from '@/data/demoSeed'
 import { toast } from '@/store/toastStore'
-import {
-  backupToDrive,
-  restoreFromDrive,
-  listBackupRevisions,
-  restoreFromDriveRevision,
-  isGoogleDriveConfigured,
-  GoogleDriveError,
-} from '@/services/googleDrive'
-import type { DriveBackupRevision } from '@/services/googleDrive'
 import {
   buildExportBundle,
   buildImportPreview,
@@ -24,7 +13,9 @@ import {
   parseImportBundle,
   ImportValidationError,
 } from '@/utils/exportImport'
-import { Badge, Button, Card, ConfirmDialog, Modal } from '@/components/ui'
+import { deleteAllData, DeleteAllError } from '@/services/sync/engine'
+import { getAccount, isGoogleConfigured } from '@/services/auth/google'
+import { Badge, Button, Card, ConfirmDialog } from '@/components/ui'
 import type { ImportPreview, ImportStrategy, MovieTrackerExport } from '@/types/export'
 
 export function DataManagementPage() {
@@ -32,65 +23,30 @@ export function DataManagementPage() {
   const watchRecords = useLibraryStore((s) => s.watchRecords)
   const ratings = useRatingsStore((s) => s.ratings)
   const lists = useListsStore((s) => s.lists)
-  const lastSyncedAt = useCloudSyncStore((s) => s.meta.lastSyncedAt)
-  const driveConfigured = isGoogleDriveConfigured()
+  const syncsToDrive = isGoogleConfigured() && Boolean(getAccount())
 
   const [importBundle, setImportBundle] = useState<MovieTrackerExport | null>(null)
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
-  const [importSource, setImportSource] = useState<'file' | 'drive'>('file')
   const [strategy, setStrategy] = useState<ImportStrategy>('merge')
   const [confirmImportOpen, setConfirmImportOpen] = useState(false)
   const [confirmWipeOpen, setConfirmWipeOpen] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [wiping, setWiping] = useState(false)
   const [dragOver, setDragOver] = useState(false)
-  const [drivePending, setDrivePending] = useState<'backup' | 'restore' | null>(null)
-  const [dropWarning, setDropWarning] = useState<{ previousCount: number; nextCount: number } | null>(null)
-  const [historyOpen, setHistoryOpen] = useState(false)
-  const [revisions, setRevisions] = useState<DriveBackupRevision[] | null>(null)
-  const [revisionsError, setRevisionsError] = useState<string | null>(null)
-  const [revisionsLoading, setRevisionsLoading] = useState(false)
-  const [restoringRevisionId, setRestoringRevisionId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const libraryCount = Object.keys(entries).length
-  const isLibraryEmpty = libraryCount === 0
   // Nothing local to lose - merge and replace produce the identical result,
-  // so asking which one (and warning that local data will be erased) is
-  // pointless friction when there's no local data in the first place.
-  const isLocalDataEmpty = isLibraryEmpty && watchRecords.length === 0 && Object.keys(ratings).length === 0 && lists.length === 0
-  const lastLocalChangeAt = useCloudSyncStore((s) => s.meta.lastLocalChangeAt)
-
-  const pendingImport = useCloudSyncStore((s) => s.pendingImport)
-
-  // Connecting on a device that already has a Drive backup lands here with
-  // that backup already fetched (see GoogleDriveConnectBanner/SyncRow) -
-  // show it immediately instead of making the user press "Drive'dan Geri
-  // Yükle" again themselves. Watches the store value (not just mount) since
-  // the connect banner can also fire while this page is already open.
-  useEffect(() => {
-    if (!pendingImport) return
-    useCloudSyncStore.getState().setPendingImport(null)
-    setImportSource('drive')
-    setImportBundle(pendingImport.bundle)
-    setImportPreview(pendingImport.preview)
-  }, [pendingImport])
-
-  // A backup can be older than what's already on this device - the whole
-  // point of dataVersion is telling the two apart instead of guessing from
-  // upload order. Doesn't apply when there's nothing local to compare against.
-  const isImportOlderThanLocal = Boolean(
-    importBundle && lastLocalChangeAt && !isLocalDataEmpty && importBundle.dataVersion.updatedAt < lastLocalChangeAt,
-  )
+  // so asking which one is pointless friction.
+  const isLocalDataEmpty = libraryCount === 0 && watchRecords.length === 0 && Object.keys(ratings).length === 0 && lists.length === 0
 
   async function handleFile(file: File) {
     setImportError(null)
     setImportBundle(null)
     setImportPreview(null)
-    setImportSource('file')
     try {
-      const text = await file.text()
-      const bundle = parseImportBundle(text)
+      const bundle = parseImportBundle(await file.text())
       setImportBundle(bundle)
       setImportPreview(buildImportPreview(bundle))
     } catch (e) {
@@ -114,8 +70,6 @@ export function DataManagementPage() {
   }
 
   function handleImportClick() {
-    // Nothing local to protect - skip the strategy choice and the "this
-    // erases your current data" confirmation and just bring the backup in.
     if (isLocalDataEmpty) {
       void confirmImport('merge')
       return
@@ -123,100 +77,37 @@ export function DataManagementPage() {
     setConfirmImportOpen(true)
   }
 
-  async function handleDriveBackup(force = false) {
-    setDrivePending('backup')
-    setDropWarning(null)
+  async function handleWipe() {
+    setWiping(true)
     try {
-      const result = await backupToDrive(force ? { force: true } : undefined)
-      if ('conflict' in result) {
-        // This device has never reconciled with Drive before, and a backup
-        // already exists there (from another device) - pushing over it
-        // blind would destroy it. Show the same merge/replace preview the
-        // "Drive'dan Geri Yükle" button uses, so the user decides first.
-        const { bundle, preview } = await restoreFromDrive()
-        setImportSource('drive')
-        setImportBundle(bundle)
-        setImportPreview(preview)
-        toast({ title: 'Drive’da zaten bir yedeğin var', description: 'Üzerine yazılmadı - önce aşağıdaki yedeği incele.' })
-      } else if ('suspiciousDrop' in result) {
-        // Local library collapsed since the last successful upload - never
-        // push that over a healthy backup without the user confirming it's
-        // intentional. Let them decide instead of guessing.
-        setDropWarning({ previousCount: result.previousCount, nextCount: result.nextCount })
-      } else if ('remoteChanged' in result) {
-        // Another device pushed since this one last synced - show what's
-        // there now instead of guessing which side should win.
-        const { bundle, preview } = await restoreFromDrive()
-        setImportSource('drive')
-        setImportBundle(bundle)
-        setImportPreview(preview)
-        toast({ title: 'Başka bir cihazdan yeni bir değişiklik var', description: 'Üzerine yazılmadı - önce aşağıdaki yedeği incele.' })
-      } else {
-        toast({ title: 'Google Drive’a yedeklendi', variant: 'success' })
-      }
+      await deleteAllData()
+      toast({ title: 'Tüm verin silindi', description: syncsToDrive ? 'Diğer cihazların da açıldıklarında temizlenecek.' : undefined })
     } catch (e) {
-      toast({ title: 'Yedekleme başarısız oldu', description: e instanceof GoogleDriveError ? e.message : undefined, variant: 'danger' })
+      toast({
+        title: 'Silinemedi',
+        description: e instanceof DeleteAllError ? e.message : 'Google Drive’a ulaşılamadı. Hiçbir şey silinmedi, tekrar dene.',
+        variant: 'danger',
+      })
     } finally {
-      setDrivePending(null)
-    }
-  }
-
-  async function handleDriveRestore() {
-    setDrivePending('restore')
-    setImportError(null)
-    try {
-      const { bundle, preview } = await restoreFromDrive()
-      setImportSource('drive')
-      setImportBundle(bundle)
-      setImportPreview(preview)
-    } catch (e) {
-      toast({ title: 'Geri yükleme başarısız oldu', description: e instanceof GoogleDriveError ? e.message : undefined, variant: 'danger' })
-    } finally {
-      setDrivePending(null)
-    }
-  }
-
-  async function handleReviewDropBackup() {
-    setDropWarning(null)
-    await handleDriveRestore()
-  }
-
-  async function openHistory() {
-    setHistoryOpen(true)
-    setRevisionsLoading(true)
-    setRevisionsError(null)
-    try {
-      setRevisions(await listBackupRevisions())
-    } catch (e) {
-      setRevisionsError(e instanceof GoogleDriveError ? e.message : 'Yedek geçmişi alınamadı.')
-    } finally {
-      setRevisionsLoading(false)
-    }
-  }
-
-  async function handleRestoreRevision(revision: DriveBackupRevision) {
-    setRestoringRevisionId(revision.id)
-    try {
-      const { bundle, preview } = await restoreFromDriveRevision(revision.id)
-      setImportSource('drive')
-      setImportBundle(bundle)
-      setImportPreview(preview)
-      setHistoryOpen(false)
-      toast({ title: 'Geçmiş sürüm yüklendi', description: 'Aşağıdan birleştir ya da yerine geçir.' })
-    } catch (e) {
-      toast({ title: 'Sürüm yüklenemedi', description: e instanceof GoogleDriveError ? e.message : undefined, variant: 'danger' })
-    } finally {
-      setRestoringRevisionId(null)
+      setWiping(false)
     }
   }
 
   return (
     <div className="flex max-w-2xl flex-col gap-8 py-6">
-      <h1 className="text-2xl font-bold text-text">Veri Yönetimi</h1>
+      <div>
+        <h1 className="text-2xl font-bold text-text">Veri Yönetimi</h1>
+        {syncsToDrive && (
+          <p className="mt-1 text-sm text-text-muted">
+            Verin zaten Google Drive’ında tutuluyor ve cihazların arasında eşitleniyor. Buradakiler, kendi elinde bir kopya
+            istediğin ya da başka bir yerden veri getirdiğin durumlar için.
+          </p>
+        )}
+      </div>
 
       <Card className="flex flex-col gap-4 p-5">
         <h2 className="flex items-center gap-2 font-semibold text-text">
-          <Download className="h-4 w-4 text-accent" /> Verini Dışa Aktar
+          <Download className="h-4 w-4 text-accent" /> Dışa Aktar
         </h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Stat label="Kitaplık" value={libraryCount} />
@@ -233,64 +124,18 @@ export function DataManagementPage() {
           </Button>
         </div>
         <p className="text-xs text-text-subtle">
-          JSON dosyası her şeyi içerir (profil, kitaplık, izleme geçmişi, puanlar, notlar, listeler, ayarlar) ve tam yedek/geri
-          yükleme için kullanılır. CSV, kitaplığının basit bir tablo görünümüdür.
+          JSON dosyası her şeyi içerir (profil, kitaplık, izleme geçmişi, puanlar, notlar, listeler, ayarlar) ve geri yükleme
+          için kullanılır. CSV, kitaplığının basit bir tablo görünümüdür.
         </p>
         <p className="flex items-start gap-2 text-xs text-warning">
           <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          Kendi TMDB anahtarını girdiysen JSON dosyasına da dahil edilir - bu dosyayı kimseyle paylaşma veya herkese açık bir
-          depoya yükleme.
+          Kendi TMDB anahtarını girdiysen JSON dosyasına da dahil edilir - bu dosyayı kimseyle paylaşma.
         </p>
       </Card>
 
-      {driveConfigured && (
-        <Card className="flex flex-col gap-4 p-5">
-          <h2 className="flex items-center gap-2 font-semibold text-text">
-            <CloudUpload className="h-4 w-4 text-accent" /> Google Drive Yedekleme
-          </h2>
-          <p className="text-sm text-text-muted">
-            Verilerini kendi Google Drive hesabındaki tek bir dosyaya (yalnızca bu uygulamanın erişebildiği) yedekle ya da oradan
-            geri yükle. Hiçbir veri bizim bir sunucumuzdan geçmez. Bir kere bağlandıktan sonra her değişiklik bu oturum boyunca
-            otomatik olarak yedeklenir - aşağıdaki düğmeler yalnızca elle bir seferlik işlem için gerekir.
-          </p>
-          {lastSyncedAt && (
-            <p className="text-xs text-text-subtle">Son yedekleme: {new Date(lastSyncedAt).toLocaleString('tr-TR')}</p>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={() => handleDriveBackup()} loading={drivePending === 'backup'} disabled={drivePending !== null}>
-              <CloudUpload className="h-4 w-4" /> Şimdi Yedekle
-            </Button>
-            <Button variant="outline" onClick={handleDriveRestore} loading={drivePending === 'restore'} disabled={drivePending !== null}>
-              <CloudDownload className="h-4 w-4" /> Drive'dan Geri Yükle
-            </Button>
-            <Button variant="outline" onClick={openHistory} disabled={drivePending !== null}>
-              <History className="h-4 w-4" /> Yedek Geçmişi
-            </Button>
-          </div>
-
-          {dropWarning && (
-            <div className="flex flex-col gap-3 rounded-md border border-warning/40 bg-warning/10 p-4">
-              <p className="flex items-start gap-2 text-sm text-text">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-                Drive’daki yedeğin {dropWarning.previousCount} kitaplık öğesi vardı, şu an yerelde sadece {dropWarning.nextCount}{' '}
-                tane var. Bu ani düşüş yanlışlıkla bir veri kaybını işaret edebilir, o yüzden otomatik yedekleme üzerine yazmadı.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={handleReviewDropBackup} loading={drivePending === 'restore'} disabled={drivePending !== null}>
-                  Drive Yedeğini İncele
-                </Button>
-                <Button size="sm" variant="danger" onClick={() => handleDriveBackup(true)} loading={drivePending === 'backup'} disabled={drivePending !== null}>
-                  Bu Doğru, Yine de Yedekle
-                </Button>
-              </div>
-            </div>
-          )}
-        </Card>
-      )}
-
       <Card className="flex flex-col gap-4 p-5">
         <h2 className="flex items-center gap-2 font-semibold text-text">
-          <Upload className="h-4 w-4 text-accent" /> Yedekten Geri Yükle
+          <Upload className="h-4 w-4 text-accent" /> Dosyadan İçe Aktar
         </h2>
 
         <div
@@ -306,7 +151,7 @@ export function DataManagementPage() {
             e.preventDefault()
             setDragOver(false)
             const file = e.dataTransfer.files[0]
-            if (file) handleFile(file)
+            if (file) void handleFile(file)
           }}
           onClick={() => fileInputRef.current?.click()}
           onKeyDown={(e) => {
@@ -320,13 +165,13 @@ export function DataManagementPage() {
           }`}
         >
           <Upload className="h-6 w-6 text-text-subtle" />
-          <p className="text-sm text-text-muted">Yedek dosyanı buraya sürükle ya da seçmek için tıkla</p>
+          <p className="text-sm text-text-muted">Movie Tracker JSON dosyanı buraya sürükle ya da seçmek için dokun</p>
           <input
             ref={fileInputRef}
             type="file"
             accept="application/json"
             className="hidden"
-            onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+            onChange={(e) => e.target.files?.[0] && void handleFile(e.target.files[0])}
           />
         </div>
 
@@ -339,17 +184,11 @@ export function DataManagementPage() {
         {importPreview && (
           <div className="flex flex-col gap-4 rounded-md border border-border p-4">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-medium text-text">Yedek tespit edildi · Sürüm {importPreview.version}</p>
-              <Badge variant="neutral">{importSource === 'drive' ? 'Google Drive' : 'Dosya'}</Badge>
+              <p className="text-sm font-medium text-text">
+                Yedek · {new Date(importBundle!.exportedAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
+              </p>
               {importPreview.containsApiKey && <Badge variant="warning">TMDB anahtarı içeriyor</Badge>}
             </div>
-            {isImportOlderThanLocal && (
-              <p className="flex items-start gap-2 text-sm text-warning">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                Bu yedek, bu cihazdaki verinden daha eski görünüyor (yedek: {new Date(importBundle!.dataVersion.updatedAt).toLocaleString('tr-TR')},
-                yerel: {new Date(lastLocalChangeAt!).toLocaleString('tr-TR')}). Üzerine yazarsan yerel değişikliklerini kaybedebilirsin.
-              </p>
-            )}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Stat label="Kitaplık" value={importPreview.counts.libraryEntries} />
               <Stat label="İzleme kaydı" value={importPreview.counts.watchRecords} />
@@ -357,18 +196,27 @@ export function DataManagementPage() {
               <Stat label="Puan" value={importPreview.counts.ratings} />
             </div>
             {isLocalDataEmpty ? (
-              <p className="text-sm text-text-subtle">Kitaplığın şu an boş, bu yedek doğrudan içe aktarılacak.</p>
+              <p className="text-sm text-text-subtle">Kitaplığın şu an boş, bu dosya doğrudan içe aktarılacak.</p>
             ) : (
-              <div className="flex flex-col gap-2">
-                <label className="flex items-center gap-2 text-sm text-text">
-                  <input type="radio" checked={strategy === 'merge'} onChange={() => setStrategy('merge')} />
-                  Mevcut verilerimle birleştir
+              <fieldset className="flex flex-col gap-2">
+                <legend className="sr-only">İçe aktarma şekli</legend>
+                <label className="flex items-start gap-2 text-sm text-text">
+                  <input type="radio" className="mt-1" checked={strategy === 'merge'} onChange={() => setStrategy('merge')} />
+                  <span>
+                    Birleştir
+                    <span className="block text-xs text-text-subtle">
+                      Dosyada olup burada olmayanları ve dosyadaki daha yeni sürümleri ekler. Hiçbir şey silinmez.
+                    </span>
+                  </span>
                 </label>
-                <label className="flex items-center gap-2 text-sm text-text">
-                  <input type="radio" checked={strategy === 'replace'} onChange={() => setStrategy('replace')} />
-                  Mevcut tüm verimin yerine geç
+                <label className="flex items-start gap-2 text-sm text-text">
+                  <input type="radio" className="mt-1" checked={strategy === 'replace'} onChange={() => setStrategy('replace')} />
+                  <span>
+                    Yerine geç
+                    <span className="block text-xs text-text-subtle">Verin tamamen dosyadakiyle değişir, dosyada olmayanlar silinir.</span>
+                  </span>
                 </label>
-              </div>
+              </fieldset>
             )}
             <Button onClick={handleImportClick} disabled={importing} loading={importing} className="self-start">
               İçe Aktar
@@ -377,109 +225,47 @@ export function DataManagementPage() {
         )}
       </Card>
 
-      <Card className="flex flex-col gap-4 p-5">
-        <h2 className="flex items-center gap-2 font-semibold text-text">
-          <Sparkles className="h-4 w-4 text-accent" /> Örnek Veri
-        </h2>
-        <p className="text-sm text-text-muted">
-          Uygulamanın nasıl göründüğünü görmek için örnek bir izleme geçmişi, puanlar ve listeler yükle. Yalnızca kitaplığın
-          boşken kullanılabilir.
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            disabled={!isLibraryEmpty}
-            onClick={async () => {
-              await loadDemoData()
-              toast({ title: 'Örnek veri yüklendi', variant: 'success' })
-            }}
-          >
-            Örnek Veri Yükle
-          </Button>
-          {!isLibraryEmpty && <p className="self-center text-xs text-text-subtle">Kitaplığın dolu olduğu için devre dışı.</p>}
-        </div>
-      </Card>
-
       <Card className="flex flex-col gap-4 border-danger/30 p-5">
         <h2 className="flex items-center gap-2 font-semibold text-danger">
-          <Trash2 className="h-4 w-4" /> Tehlikeli Bölge
+          <Trash2 className="h-4 w-4" /> Tüm Verimi Sil
         </h2>
         <p className="text-sm text-text-muted">
-          Bu tarayıcıdaki tüm Movie Tracker verini kalıcı olarak siler: kitaplık, izleme geçmişi, puanlar, notlar, listeler ve
-          ayarlar. Önce dışa aktarmanı öneririz.
+          {syncsToDrive
+            ? 'Kitaplığın, izleme geçmişin, puanların, notların, listelerin ve ayarların bu cihazdan ve Google Drive’ından - dolayısıyla tüm cihazlarından - kalıcı olarak silinir. Hesabın bağlı kalır.'
+            : 'Bu tarayıcıdaki tüm Movie Tracker verin kalıcı olarak silinir.'}
         </p>
-        <Button variant="danger" onClick={() => setConfirmWipeOpen(true)} className="self-start">
-          <Trash2 className="h-4 w-4" /> Tüm Yerel Veriyi Sil
+        <Button variant="danger" onClick={() => setConfirmWipeOpen(true)} loading={wiping} disabled={wiping} className="self-start">
+          <Trash2 className="h-4 w-4" /> Tüm verimi sil
         </Button>
       </Card>
 
       <ConfirmDialog
         open={confirmImportOpen}
         onOpenChange={setConfirmImportOpen}
-        title={strategy === 'replace' ? 'Mevcut verinin yerine geçilsin mi?' : 'Veriler birleştirilsin mi?'}
+        title={strategy === 'replace' ? 'Verin dosyadakiyle değiştirilsin mi?' : 'Dosya birleştirilsin mi?'}
         description={
           strategy === 'replace'
-            ? 'Bu, şu anki tüm yerel verini geri dönüşü olmayan şekilde siler ve yedekteki veriyle değiştirir.'
-            : 'İçe aktarılan kayıtlar mevcut kitaplığınla birleştirilecek.'
+            ? 'Dosyada olmayan her şey silinir. Değişiklik tüm cihazlarına da yansır.'
+            : 'Dosyadaki eksik ve daha yeni kayıtlar verine eklenecek.'
         }
         destructive={strategy === 'replace'}
-        confirmLabel="Devam Et"
-        onConfirm={confirmImport}
+        confirmLabel="Devam et"
+        onConfirm={() => void confirmImport()}
       />
 
       <ConfirmDialog
         open={confirmWipeOpen}
         onOpenChange={setConfirmWipeOpen}
-        title="Tüm yerel verin silinsin mi?"
-        description="Bu, bu tarayıcıdaki Movie Tracker verilerini kalıcı olarak kaldırır. Bu işlem geri alınamaz."
-        confirmLabel="Verimi Sil"
-        extraAction={{ label: 'Önce Dışa Aktar', onClick: () => exportAsJSON(buildExportBundle()) }}
-        onConfirm={async () => {
-          await clearDemoData()
-          toast({ title: 'Tüm yerel veri silindi' })
-        }}
+        title="Tüm verin silinsin mi?"
+        description={
+          syncsToDrive
+            ? 'Bu cihazdan, Google Drive’dan ve diğer tüm cihazlarından silinir. Bu işlem geri alınamaz.'
+            : 'Bu tarayıcıdaki Movie Tracker verilerin kalıcı olarak silinir. Bu işlem geri alınamaz.'
+        }
+        confirmLabel="Her şeyi sil"
+        extraAction={{ label: 'Önce dışa aktar', onClick: () => exportAsJSON(buildExportBundle()) }}
+        onConfirm={() => void handleWipe()}
       />
-
-      <Modal
-        open={historyOpen}
-        onOpenChange={setHistoryOpen}
-        title="Yedek Geçmişi"
-        description="Drive, her yedeklemenin önceki sürümlerini de saklar. Yanlışlıkla üzerine yazılmış iyi bir yedeğe buradan geri dönebilirsin."
-      >
-        <div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
-          {revisionsLoading && <p className="text-sm text-text-subtle">Yükleniyor…</p>}
-          {revisionsError && (
-            <p className="flex items-center gap-2 text-sm text-danger">
-              <AlertTriangle className="h-4 w-4" /> {revisionsError}
-            </p>
-          )}
-          {revisions && revisions.length === 0 && !revisionsLoading && (
-            <p className="text-sm text-text-subtle">Henüz birden fazla sürüm yok.</p>
-          )}
-          {revisions?.map((revision, i) => (
-            <div key={revision.id} className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
-              <div className="min-w-0">
-                <p className="text-sm text-text">
-                  {new Date(revision.modifiedTime).toLocaleString('tr-TR')}
-                  {i === 0 && <span className="ml-2 text-xs text-text-subtle">(mevcut)</span>}
-                </p>
-                {revision.sizeBytes !== undefined && (
-                  <p className="text-xs text-text-subtle">{Math.max(1, Math.round(revision.sizeBytes / 1024))} KB</p>
-                )}
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleRestoreRevision(revision)}
-                loading={restoringRevisionId === revision.id}
-                disabled={restoringRevisionId !== null || i === 0}
-              >
-                <RotateCcw className="h-4 w-4" /> Geri Yükle
-              </Button>
-            </div>
-          ))}
-        </div>
-      </Modal>
     </div>
   )
 }
