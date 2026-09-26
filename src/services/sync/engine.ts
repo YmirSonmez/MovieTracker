@@ -1,10 +1,13 @@
 import * as drive from './drive'
 import { decodeSnapshot, encodeSnapshot } from './codec'
 import {
+  getLastStamp,
   getLocalMax,
+  observeStamp,
   onLocalChange,
   snapshotFromLegacyBundle,
   storage,
+  writesSettled,
   SNAPSHOT_SCHEMA,
   type SyncSnapshot,
 } from '@/services/storage/repository'
@@ -23,6 +26,7 @@ import {
 import { useSyncStore, type SyncPhase } from '@/store/syncStore'
 import { hydrateAllStores } from '@/store/init'
 import { parseImportBundle } from '@/utils/exportImport'
+import { ROUTES } from '@/utils/routes'
 
 /**
  * Keeps this device and the account's copy on Drive in step, in the
@@ -40,8 +44,8 @@ import { parseImportBundle } from '@/utils/exportImport'
 /** Wait for a burst of edits (marking a whole season) to settle. */
 const CHANGE_DEBOUNCE_MS = 1500
 /** Picks up other devices' edits while the app sits open. One tiny
- * metadata request when nothing changed. */
-const POLL_MS = 60_000
+ * metadata request (a few hundred bytes) when nothing changed. */
+const POLL_MS = 15_000
 const FOCUS_MIN_GAP_MS = 10_000
 /** Back after this long with an expired token: renew it right away, the
  * same way a fresh page load would. */
@@ -49,12 +53,38 @@ const LONG_AWAY_MS = 10 * 60_000
 
 let running: Promise<void> | null = null
 let rerun = false
+let rerunManual = false
 let changeCounter = 0
 let lastAttemptAt = 0
 let debounceTimer: ReturnType<typeof setTimeout> | undefined
 
 function setPhase(phase: SyncPhase, extra: Partial<ReturnType<typeof useSyncStore.getState>> = {}): void {
   useSyncStore.setState({ phase, ...extra })
+}
+
+// ---------------------------------------------------------------------------
+// Tabs. Every tab of the app shares one IndexedDB and one sync state, so
+// they coordinate: one tab syncs at a time (a Web Lock), and a tab that
+// changes the data - a local edit or a merge from Drive - tells the others
+// to reload their stores, which would otherwise keep showing the old copy.
+
+type TabMessage = { type: 'changed'; stamp: number } | { type: 'synced' } | { type: 'signedOut' }
+
+const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('movie-tracker')
+let tellTimer: ReturnType<typeof setTimeout> | undefined
+
+function tell(message: TabMessage): void {
+  channel?.postMessage(message)
+}
+
+/** Coalesces a burst of local edits into one message. */
+function tellChanged(): void {
+  clearTimeout(tellTimer)
+  tellTimer = setTimeout(() => tell({ type: 'changed', stamp: getLastStamp() }), 50)
+}
+
+function withSyncLock(run: () => Promise<void>): Promise<void> {
+  return navigator.locks ? navigator.locks.request('movie-tracker-sync', run) : run()
 }
 
 function newEpoch(): string {
@@ -65,12 +95,14 @@ function isNetworkError(error: unknown): boolean {
   return !navigator.onLine || (error instanceof TypeError && /fetch|network|load failed/i.test(error.message))
 }
 
-/** Reloads the in-memory stores from IndexedDB after a merge - again if a
- * local edit landed while it was reading, so the UI never shows a copy
- * that's missing the edit the user just made. */
+/** Reloads the in-memory stores from IndexedDB after a merge. Waits for
+ * in-flight writes first (the screen already shows them), and reads again
+ * if another edit landed while it was reading - so the UI never shows a
+ * copy that's missing the edit the user just made. */
 async function rehydrate(): Promise<void> {
   let seen: number
   do {
+    await writesSettled()
     seen = changeCounter
     await hydrateAllStores()
   } while (seen !== changeCounter)
@@ -120,7 +152,7 @@ async function settleCreationRace(token: string, state: SyncState, created: driv
   return result.changed
 }
 
-async function syncWithDrive(token: string, email: string): Promise<SyncState> {
+async function syncWithDrive(token: string, email: string, transferring: () => void): Promise<SyncState> {
   const stored = await storage.getSyncState()
   const state: SyncState = stored?.account === email ? { ...stored } : { account: email, syncedUpTo: 0 }
   let changed = false
@@ -132,6 +164,7 @@ async function syncWithDrive(token: string, email: string): Promise<SyncState> {
     file = files[0] ?? null
     // Leftovers from an interrupted creation race - fold them in.
     for (const extra of files.slice(1)) {
+      transferring()
       changed = (await storage.applyRemoteSnapshot(await download(token, extra.id))).changed || changed
       await drive.deleteFile(token, extra.id).catch(() => {})
       needUpload = true
@@ -140,6 +173,7 @@ async function syncWithDrive(token: string, email: string): Promise<SyncState> {
 
   if (!file) {
     // Nothing on Drive yet: the account's first device.
+    transferring()
     state.epoch ??= newEpoch()
     if (!state.legacyChecked) {
       changed = (await importLegacyBackup(token, state.epoch)) || changed
@@ -147,6 +181,7 @@ async function syncWithDrive(token: string, email: string): Promise<SyncState> {
     }
     needUpload = true
   } else if (file.id !== state.fileId || file.version !== state.remoteVersion) {
+    transferring()
     const remote = await download(token, file.id)
     // A different epoch than the one this device last synced under means
     // the account's data was deleted from another device - drop ours
@@ -163,11 +198,18 @@ async function syncWithDrive(token: string, email: string): Promise<SyncState> {
   }
 
   if (getLocalMax() > state.syncedUpTo) needUpload = true
-  if (changed) await rehydrate()
+  if (changed) {
+    await rehydrate()
+    tellChanged()
+  }
 
   if (needUpload) {
+    transferring()
     const written = await upload(token, state, file?.id ?? null)
-    if (!file && (await settleCreationRace(token, state, written))) await rehydrate()
+    if (!file && (await settleCreationRace(token, state, written))) {
+      await rehydrate()
+      tellChanged()
+    }
   }
 
   state.lastSyncedAt = Date.now()
@@ -175,7 +217,10 @@ async function syncWithDrive(token: string, email: string): Promise<SyncState> {
   return state
 }
 
-async function runOnce(): Promise<void> {
+/** `manual`: the user asked (a button) - show activity even if it turns
+ * out to be a quick check. Background checks stay invisible unless data
+ * actually moves. */
+async function runOnce(manual: boolean): Promise<void> {
   if (!isGoogleConfigured()) return setPhase('disabled')
   const account = getAccount()
   if (!account) return
@@ -184,10 +229,11 @@ async function runOnce(): Promise<void> {
   if (!token) return setPhase('needsAuth')
 
   lastAttemptAt = Date.now()
-  setPhase('syncing')
+  if (manual) setPhase('syncing')
   try {
-    const state = await syncWithDrive(token, account.email)
+    const state = await syncWithDrive(token, account.email, () => setPhase('syncing'))
     setPhase('idle', { error: null, lastSyncedAt: state.lastSyncedAt ?? null, dirty: getLocalMax() > state.syncedUpTo })
+    tell({ type: 'synced' })
   } catch (error) {
     if (error instanceof drive.DriveAuthError) {
       invalidateToken()
@@ -202,15 +248,19 @@ async function runOnce(): Promise<void> {
 
 /** Runs a sync now, or - if one is already running - once more right after
  * it, so an edit made mid-sync is never left behind. */
-export function syncNow(): Promise<void> {
+export function syncNow(options: { manual?: boolean } = {}): Promise<void> {
   if (running) {
     rerun = true
+    rerunManual ||= Boolean(options.manual)
     return running
   }
+  let manual = Boolean(options.manual)
   running = (async () => {
     do {
       rerun = false
-      await runOnce()
+      await withSyncLock(() => runOnce(manual))
+      manual = rerunManual
+      rerunManual = false
     } while (rerun)
   })().finally(() => {
     running = null
@@ -231,6 +281,7 @@ export function startSync(): () => void {
 
   const offChange = onLocalChange(() => {
     changeCounter++
+    tellChanged()
     useSyncStore.setState({ dirty: true })
     clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => void syncNow(), CHANGE_DEBOUNCE_MS)
@@ -255,10 +306,35 @@ export function startSync(): () => void {
   }
   const onOnline = () => void syncNow()
   const onOffline = () => setPhase('offline')
+  // Switching back to this window without the tab ever being hidden
+  // (another window on top, side-by-side apps).
+  const onFocus = () => {
+    if (Date.now() - lastAttemptAt > FOCUS_MIN_GAP_MS) void syncNow()
+  }
+  const onTabMessage = (event: MessageEvent<TabMessage>) => {
+    const message = event.data
+    if (message.type === 'changed') {
+      observeStamp(message.stamp)
+      void rehydrate()
+    } else if (message.type === 'synced') {
+      void storage.getSyncState().then((state) =>
+        useSyncStore.setState({
+          phase: 'idle',
+          error: null,
+          lastSyncedAt: state?.lastSyncedAt ?? null,
+          dirty: getLocalMax() > (state?.syncedUpTo ?? 0),
+        }),
+      )
+    } else if (message.type === 'signedOut') {
+      window.location.reload()
+    }
+  }
 
   document.addEventListener('visibilitychange', onVisibility)
   window.addEventListener('online', onOnline)
   window.addEventListener('offline', onOffline)
+  window.addEventListener('focus', onFocus)
+  channel?.addEventListener('message', onTabMessage)
   const poll = setInterval(() => {
     if (document.visibilityState === 'visible') void syncNow()
   }, POLL_MS)
@@ -279,6 +355,8 @@ export function startSync(): () => void {
     document.removeEventListener('visibilitychange', onVisibility)
     window.removeEventListener('online', onOnline)
     window.removeEventListener('offline', onOffline)
+    window.removeEventListener('focus', onFocus)
+    channel?.removeEventListener('message', onTabMessage)
   }
 }
 
@@ -309,7 +387,8 @@ export async function flushPendingChanges(): Promise<boolean> {
 export async function signOut(): Promise<void> {
   forgetAccount()
   await storage.wipeLocal()
-  window.history.replaceState(null, '', `${window.location.pathname}#/login`)
+  tell({ type: 'signedOut' })
+  window.history.replaceState(null, '', `${window.location.pathname}#${ROUTES.login}`)
   window.location.reload()
 }
 
@@ -326,6 +405,7 @@ export async function deleteAllData(): Promise<void> {
   if (!isGoogleConfigured() || !account) {
     await storage.wipeLocal()
     await rehydrate()
+    tellChanged()
     return
   }
   const token = getAccessToken()
@@ -333,7 +413,14 @@ export async function deleteAllData(): Promise<void> {
     throw new DeleteAllError('Her yerden silmek için internet bağlantısı ve etkin bir Google oturumu gerekiyor.')
   }
   if (running) await running
+  // Held for the whole operation: a sync running in another tab right now
+  // could otherwise upload the old data again straight after the wipe.
+  await withSyncLock(() => wipeEverywhere(token, account.email))
+  tellChanged()
+  setPhase('idle', { dirty: false, error: null, lastSyncedAt: Date.now() })
+}
 
+async function wipeEverywhere(token: string, email: string): Promise<void> {
   const epoch = newEpoch()
   const empty: SyncSnapshot = { app: 'movie-tracker', schema: SNAPSHOT_SCHEMA, epoch, writtenAt: Date.now(), tables: {}, media: [] }
   const bytes = await encodeSnapshot(empty)
@@ -348,7 +435,7 @@ export async function deleteAllData(): Promise<void> {
 
   await storage.wipeLocal()
   await storage.putSyncState({
-    account: account.email,
+    account: email,
     fileId: written.id,
     remoteVersion: written.version,
     epoch,
@@ -357,5 +444,4 @@ export async function deleteAllData(): Promise<void> {
     legacyChecked: true,
   })
   await rehydrate()
-  setPhase('idle', { dirty: false, error: null, lastSyncedAt: Date.now() })
 }

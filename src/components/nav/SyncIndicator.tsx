@@ -38,7 +38,10 @@ export function SyncIndicator() {
     )
   }
 
-  const busy = phase === 'syncing' || (dirty && phase === 'idle')
+  // Motion only while data is actually moving; edits waiting for the
+  // upload (a second or two) get a quiet dot instead of a spinner.
+  const busy = phase === 'syncing'
+  const pending = dirty && phase === 'idle'
   const Icon = phase === 'offline' ? CloudOff : phase === 'error' ? AlertTriangle : busy ? RefreshCw : Cloud
 
   return (
@@ -47,15 +50,16 @@ export function SyncIndicator() {
       aria-label={label}
       title={label}
       onClick={() => {
-        void syncNow()
+        void syncNow({ manual: true })
         if (phase === 'error' && error) toast({ title: 'Eşitleme sorunu', description: error, variant: 'danger' })
       }}
       className={cn(
-        'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-surface-2 active:scale-[0.97]',
+        'relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-surface-2 active:scale-[0.97]',
         phase === 'error' ? 'text-warning' : 'text-text-subtle hover:text-text',
       )}
     >
       <Icon className={cn('h-[18px] w-[18px]', busy && 'motion-safe:animate-spin')} strokeWidth={1.75} />
+      {pending && <span aria-hidden="true" className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-accent" />}
     </button>
   )
 }

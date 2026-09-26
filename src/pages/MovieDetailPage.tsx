@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Bookmark, Check, Heart, ListPlus, RotateCcw, Trash2 } from 'lucide-react'
-import { movieService, isLiveDataConfigured } from '@/services'
+import { isLiveDataConfigured, queries, useQuery } from '@/services'
 import { getAllSummaries } from '@/data/catalog'
 import { toSummary } from '@/utils/media'
 import { findSimilarByGenre } from '@/utils/recommend'
@@ -15,12 +15,16 @@ import { CastRail } from '@/components/media/CastRail'
 import { MediaRail } from '@/components/media/MediaRail'
 import { RatingReviewCard } from '@/components/media/RatingReviewCard'
 import { AddToListDialog } from '@/components/media/AddToListDialog'
-import type { MovieDetail } from '@/types/media'
 
 export function MovieDetailPage() {
   const { mediaId = '' } = useParams()
-  const [detail, setDetail] = useState<MovieDetail | null | undefined>(undefined)
-  const [failed, setFailed] = useState(false)
+  // Keyed so every per-title bit of state starts fresh when one movie page
+  // links straight to another.
+  return <MovieDetail key={mediaId} mediaId={mediaId} />
+}
+
+function MovieDetail({ mediaId }: { mediaId: string }) {
+  const { data: detail, error, isLoading, refetch } = useQuery(queries.movieDetail(mediaId))
   const [listDialogOpen, setListDialogOpen] = useState(false)
   const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false)
 
@@ -29,23 +33,8 @@ export function MovieDetailPage() {
   const { toggleFavorite, addToWatchlist, removeFromWatchlist, markWatched, markUnwatched } = useLibraryActions()
 
   useEffect(() => {
-    let cancelled = false
-    setDetail(undefined)
-    setFailed(false)
-    movieService
-      .getDetail(mediaId)
-      .then((d) => {
-        if (cancelled) return
-        setDetail(d)
-        if (d) useMediaCacheStore.getState().cache([toSummary(d)])
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [mediaId])
+    if (detail) void useMediaCacheStore.getState().cache([toSummary(detail)])
+  }, [detail])
 
   const fallbackPool = useMemo(() => (isLiveDataConfigured() ? [] : getAllSummaries()), [])
   const similar = useMemo(() => {
@@ -57,8 +46,8 @@ export function MovieDetailPage() {
     return detail.recommendations.length > 0 ? detail.recommendations : similar
   }, [detail, similar])
 
-  if (failed) return <ErrorState onRetry={() => setDetail(undefined)} />
-  if (detail === undefined) return <DetailSkeleton />
+  if (error) return <ErrorState onRetry={refetch} />
+  if (isLoading || detail === undefined) return <DetailSkeleton />
   if (detail === null) {
     return <ErrorState title="Film bulunamadı" description="Bu film kaldırılmış ya da hiç var olmamış olabilir." />
   }

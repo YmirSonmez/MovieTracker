@@ -13,15 +13,11 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
-      // We register the service worker ourselves (src/registerServiceWorker.ts)
-      // via the virtual:pwa-register module instead of the default injected
-      // <script>, because the auto-injected one only calls
-      // navigator.serviceWorker.register() - it never actually applies an
-      // update it finds. Without that, a new deploy sits fully downloaded
-      // but inert until the visitor happens to fully close and reopen the
-      // tab, which reads as "the new feature isn't there yet" even though
-      // it shipped.
+      // 'prompt': a new version downloads in the background and waits,
+      // instead of taking over (and reloading the page) the moment it's
+      // found - src/registerServiceWorker.ts switches over while the app is
+      // hidden, so an update never lands in the middle of using it.
+      registerType: 'prompt',
       injectRegister: false,
       includeAssets: ['favicon.svg'],
       manifest: {

@@ -78,7 +78,7 @@ export function AccountSection() {
           title="Google Drive eşitlemesi"
           description="Değişiklikler birkaç saniye içinde kendiliğinden gönderilir; diğer cihazlarındakiler açtığında gelir."
           control={
-            <Button size="sm" variant="outline" onClick={() => void syncNow()} disabled={phase === 'syncing' || phase === 'offline'}>
+            <Button size="sm" variant="outline" onClick={() => void syncNow({ manual: true })} disabled={phase === 'syncing' || phase === 'offline'}>
               <RefreshCw className={phase === 'syncing' ? 'h-3.5 w-3.5 motion-safe:animate-spin' : 'h-3.5 w-3.5'} /> Şimdi eşitle
             </Button>
           }

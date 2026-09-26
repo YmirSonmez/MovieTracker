@@ -1,7 +1,8 @@
+import { memo } from 'react'
 import { Avatar } from '@/components/ui'
 import type { CastMember } from '@/types/media'
 
-export function CastRail({ cast }: { cast: CastMember[] }) {
+export const CastRail = memo(function CastRail({ cast }: { cast: CastMember[] }) {
   if (cast.length === 0) return null
   return (
     <section className="flex flex-col gap-3">
@@ -19,4 +20,4 @@ export function CastRail({ cast }: { cast: CastMember[] }) {
       </div>
     </section>
   )
-}
+})

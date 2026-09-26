@@ -5,7 +5,7 @@ import { useLibraryStore } from '@/store/libraryStore'
 import { useRatingsStore } from '@/store/ratingsStore'
 import { useMediaCacheStore } from '@/store/mediaCacheStore'
 import { useProfileStore } from '@/store/profileStore'
-import { movieService, tvService } from '@/services'
+import { fetchQuery, queries, useQuery } from '@/services'
 import { getNextEpisode, getSeasonCompletion } from '@/utils/progress'
 import { toSummary } from '@/utils/media'
 import { inferFavoriteGenres, recommendMedia } from '@/utils/recommend'
@@ -17,7 +17,7 @@ import { Badge, Button, ErrorState, RailSkeleton } from '@/components/ui'
 import { MediaRail } from '@/components/media/MediaRail'
 import { ContinueWatchingCard } from '@/components/media/ContinueWatchingCard'
 import { StatCard } from '@/components/stats/StatCard'
-import type { Episode, MediaSummary } from '@/types/media'
+import type { Episode, MediaSummary, TVShowDetail } from '@/types/media'
 
 interface ContinueItem {
   summary: MediaSummary
@@ -28,7 +28,7 @@ interface ContinueItem {
 function useContinueWatching(): ContinueItem[] | null {
   const entries = useLibraryStore((s) => s.entries)
   const episodeProgress = useLibraryStore((s) => s.episodeProgress)
-  const [items, setItems] = useState<ContinueItem[] | null>(null)
+  const [details, setDetails] = useState<TVShowDetail[] | null>(null)
 
   const watchingIds = useMemo(
     () =>
@@ -37,33 +37,42 @@ function useContinueWatching(): ContinueItem[] | null {
         .map((e) => e.mediaId),
     [entries],
   )
+  const idsKey = watchingIds.join(',')
 
+  // Show details (with every season's episodes) only when the set of shows
+  // changes - served from the query cache, so usually instantly. Marking an
+  // episode only recomputes the list below; it doesn't refetch anything.
   useEffect(() => {
     let cancelled = false
     if (watchingIds.length === 0) {
-      setItems([])
+      setDetails([])
       return
     }
-    Promise.all(watchingIds.map((id) => tvService.getDetail(id).catch(() => null))).then((details) => {
-      if (cancelled) return
-      const results: ContinueItem[] = []
-      for (const detail of details) {
-        if (!detail) continue
-        const next = getNextEpisode(detail.seasons, episodeProgress)
-        if (!next) continue
-        const season = detail.seasons.find((s) => s.seasonNumber === next.seasonNumber)
-        const completion = season ? getSeasonCompletion(season, episodeProgress) : { percent: 0 }
-        results.push({ summary: toSummary(detail), nextEpisode: next, percent: completion.percent })
-      }
-      setItems(results)
+    Promise.all(watchingIds.map((id) => fetchQuery(queries.showDetail(id)).catch(() => null))).then((all) => {
+      if (!cancelled) setDetails(all.filter((d): d is TVShowDetail => Boolean(d)))
     })
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- watchingIds is derived from entries and episodeProgress already triggers recompute of completion via closure re-run
-  }, [watchingIds.join(','), episodeProgress])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- idsKey is watchingIds' identity by value
+  }, [idsKey])
 
-  return items
+  return useMemo(() => {
+    if (!details) return null
+    // Until a changed set of shows has loaded, never show one that's no
+    // longer being watched.
+    const current = new Set(watchingIds)
+    const results: ContinueItem[] = []
+    for (const detail of details) {
+      if (!current.has(detail.id)) continue
+      const next = getNextEpisode(detail.seasons, episodeProgress)
+      if (!next) continue
+      const season = detail.seasons.find((s) => s.seasonNumber === next.seasonNumber)
+      const completion = season ? getSeasonCompletion(season, episodeProgress) : { percent: 0 }
+      results.push({ summary: toSummary(detail), nextEpisode: next, percent: completion.percent })
+    }
+    return results
+  }, [details, episodeProgress, watchingIds])
 }
 
 export function HomePage() {
@@ -74,25 +83,14 @@ export function HomePage() {
   const mediaCache = useMediaCacheStore((s) => s.items)
   const profile = useProfileStore((s) => s.profile)
 
-  const [trending, setTrending] = useState<MediaSummary[] | null>(null)
-  const [trendingError, setTrendingError] = useState(false)
-  const [retryToken, setRetryToken] = useState(0)
+  const trendingMovies = useQuery(queries.movieList('trending'))
+  const trendingShows = useQuery(queries.tvList('trending'))
+  const trending = useMemo(
+    () => (trendingMovies.data && trendingShows.data ? [...trendingMovies.data.slice(0, 8), ...trendingShows.data.slice(0, 4)] : null),
+    [trendingMovies.data, trendingShows.data],
+  )
+  const trendingError = Boolean(trendingMovies.error || trendingShows.error)
   const continueWatching = useContinueWatching()
-
-  useEffect(() => {
-    let cancelled = false
-    setTrendingError(false)
-    Promise.all([movieService.getTrending(), tvService.getTrending()])
-      .then(([movies, shows]) => {
-        if (!cancelled) setTrending([...movies.slice(0, 8), ...shows.slice(0, 4)])
-      })
-      .catch(() => {
-        if (!cancelled) setTrendingError(true)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [retryToken])
 
   const recentlyWatched = useMemo(() => {
     const combined = [...getLastActivityMap(watchRecords, episodeProgress).entries()]
@@ -164,16 +162,11 @@ export function HomePage() {
             burada oluşacak.
           </p>
         </div>
-        <div className="flex gap-3">
-          <Button asChild>
-            <Link to={ROUTES.discover}>
-              <Compass className="h-4 w-4" /> Keşfet
-            </Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link to={ROUTES.dataManagement}>Örnek veri yükle</Link>
-          </Button>
-        </div>
+        <Button asChild>
+          <Link to={ROUTES.discover}>
+            <Compass className="h-4 w-4" /> Keşfet
+          </Link>
+        </Button>
       </div>
     )
   }
@@ -237,7 +230,10 @@ export function HomePage() {
         <ErrorState
           title="Popüler içerikler yüklenemedi"
           description="Bağlantında bir sorun olabilir. Kaydedilmiş kitaplığın güvende."
-          onRetry={() => setRetryToken((t) => t + 1)}
+          onRetry={() => {
+            trendingMovies.refetch()
+            trendingShows.refetch()
+          }}
         />
       ) : trending === null ? (
         <RailSkeleton />

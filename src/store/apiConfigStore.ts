@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { storage } from '@/services/storage/repository'
+import { persist } from './persist'
 import { DEFAULT_API_CONFIG } from '@/types/user'
 import type { ApiConfig } from '@/types/user'
 
@@ -24,7 +25,7 @@ export const useApiConfigStore = create<ApiConfigState>((set, get) => ({
 
   async updateConfig(patch) {
     const updated = { ...get().config, ...patch }
-    await storage.putApiConfig(updated)
     set({ config: updated })
+    await persist(storage.putApiConfig(updated), () => get().hydrate())
   },
 }))

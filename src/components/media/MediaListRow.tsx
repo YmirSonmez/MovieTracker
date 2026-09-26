@@ -1,9 +1,8 @@
-import { Link } from 'react-router-dom'
+import { DetailLink } from './DetailLink'
 import { Star } from 'lucide-react'
 import type { MediaSummary } from '@/types/media'
 import type { WatchStatus } from '@/types/watch'
 import { Badge } from '@/components/ui'
-import { ROUTES } from '@/utils/routes'
 
 const STATUS_LABEL: Record<WatchStatus, string> = {
   watching: 'İzleniyor',
@@ -27,9 +26,8 @@ interface MediaListRowProps {
 }
 
 export function MediaListRow({ summary, status, isFavorite, rating }: MediaListRowProps) {
-  const detailPath = summary.mediaType === 'movie' ? ROUTES.movieDetail(summary.id) : ROUTES.showDetail(summary.id)
   return (
-    <Link to={detailPath} className="flex items-center gap-4 rounded-md p-2 transition-colors hover:bg-surface-2">
+    <DetailLink mediaId={summary.id} mediaType={summary.mediaType} className="flex items-center gap-4 rounded-md p-2 transition-colors hover:bg-surface-2">
       <div className="h-20 w-14 shrink-0 overflow-hidden rounded-sm bg-surface-2">
         {summary.posterPath && <img src={summary.posterPath} alt="" className="h-full w-full object-cover" />}
       </div>
@@ -44,6 +42,6 @@ export function MediaListRow({ summary, status, isFavorite, rating }: MediaListR
       )}
       {isFavorite && <Star className="h-4 w-4 shrink-0 text-accent" fill="currentColor" />}
       {status && <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABEL[status]}</Badge>}
-    </Link>
+    </DetailLink>
   )
 }

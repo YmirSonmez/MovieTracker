@@ -1,10 +1,10 @@
-import { Link } from 'react-router-dom'
+import { memo } from 'react'
 import { Bookmark, Check, Heart, Star } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { MediaSummary } from '@/types/media'
 import { useLibraryStore } from '@/store/libraryStore'
 import { useLibraryActions } from '@/hooks/useLibraryActions'
-import { ROUTES } from '@/utils/routes'
+import { DetailLink } from './DetailLink'
 import { cn } from '@/utils/cn'
 
 interface MediaCardProps {
@@ -14,14 +14,20 @@ interface MediaCardProps {
   showQuickActions?: boolean
 }
 
-export function MediaCard({ summary, subtitle, className, showQuickActions = true }: MediaCardProps) {
+/** Solid translucent circles rather than backdrop-blur: a grid has three of
+ * these per card (~500 on Discover), and every backdrop filter is its own
+ * layer the GPU re-composites on each scroll frame. */
+const QUICK_ACTION = 'flex h-9 w-9 items-center justify-center rounded-full transition-colors lg:h-8 lg:w-8'
+
+/** Memoized: grids and rails hold dozens of these, and each subscribes to
+ * its own library entry - a parent re-render shouldn't redo them all. */
+export const MediaCard = memo(function MediaCard({ summary, subtitle, className, showQuickActions = true }: MediaCardProps) {
   const entry = useLibraryStore((s) => s.entries[summary.id])
   const { toggleFavorite, addToWatchlist, markWatched } = useLibraryActions()
-  const detailPath = summary.mediaType === 'movie' ? ROUTES.movieDetail(summary.id) : ROUTES.showDetail(summary.id)
 
   return (
     <div className={cn('group flex w-full flex-col gap-2', className)}>
-      <Link to={detailPath} className="relative block overflow-hidden rounded-md bg-surface-2">
+      <DetailLink mediaId={summary.id} mediaType={summary.mediaType} className="relative block overflow-hidden rounded-md bg-surface-2">
         <div className="aspect-2/3 w-full">
           {summary.posterPath ? (
             <img
@@ -51,8 +57,8 @@ export function MediaCard({ summary, subtitle, className, showQuickActions = tru
                 toggleFavorite(summary)
               }}
               className={cn(
-                'flex h-9 w-9 items-center justify-center rounded-full backdrop-blur-sm transition-colors lg:h-8 lg:w-8',
-                entry?.isFavorite ? 'bg-accent text-accent-foreground' : 'bg-white/15 text-white hover:bg-white/25',
+                QUICK_ACTION,
+                entry?.isFavorite ? 'bg-accent text-accent-foreground' : 'bg-black/45 text-white hover:bg-black/65',
               )}
             >
               <Heart className="h-4 w-4" fill={entry?.isFavorite ? 'currentColor' : 'none'} />
@@ -65,8 +71,8 @@ export function MediaCard({ summary, subtitle, className, showQuickActions = tru
                 addToWatchlist(summary)
               }}
               className={cn(
-                'flex h-9 w-9 items-center justify-center rounded-full backdrop-blur-sm transition-colors lg:h-8 lg:w-8',
-                entry?.status === 'planned' ? 'bg-accent text-accent-foreground' : 'bg-white/15 text-white hover:bg-white/25',
+                QUICK_ACTION,
+                entry?.status === 'planned' ? 'bg-accent text-accent-foreground' : 'bg-black/45 text-white hover:bg-black/65',
               )}
             >
               <Bookmark className="h-4 w-4" fill={entry?.status === 'planned' ? 'currentColor' : 'none'} />
@@ -79,17 +85,17 @@ export function MediaCard({ summary, subtitle, className, showQuickActions = tru
                 markWatched(summary)
               }}
               className={cn(
-                'flex h-9 w-9 items-center justify-center rounded-full backdrop-blur-sm transition-colors lg:h-8 lg:w-8',
-                entry?.status === 'completed' ? 'bg-accent text-accent-foreground' : 'bg-white/15 text-white hover:bg-white/25',
+                QUICK_ACTION,
+                entry?.status === 'completed' ? 'bg-accent text-accent-foreground' : 'bg-black/45 text-white hover:bg-black/65',
               )}
             >
               <Check className="h-4 w-4" />
             </button>
           </div>
         )}
-      </Link>
+      </DetailLink>
 
-      <Link to={detailPath} className="flex flex-col gap-0.5">
+      <DetailLink mediaId={summary.id} mediaType={summary.mediaType} className="flex flex-col gap-0.5">
         <h3 className="truncate text-sm font-semibold text-text">{summary.title}</h3>
         {subtitle ?? (
           <div className="flex items-center gap-1.5 text-xs text-text-subtle">
@@ -103,7 +109,7 @@ export function MediaCard({ summary, subtitle, className, showQuickActions = tru
             )}
           </div>
         )}
-      </Link>
+      </DetailLink>
     </div>
   )
-}
+})

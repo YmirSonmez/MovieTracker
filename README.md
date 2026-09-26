@@ -160,6 +160,18 @@ src/services/        # MovieService / TVService / SearchService / PeopleService 
 
 Component'ler her zaman `src/services` üzerinden konuşur; hangi kaynağın kullanıldığını bilmesi gerekmez.
 
+### Akıcılık
+
+Uygulama "hiçbir şeyi bekletme" ilkesiyle çalışır:
+
+- **Önce ekran, sonra kayıt** — işaretleme, puan, liste gibi her değişiklik ekrana dokunulduğu karede yansır; IndexedDB'ye yazma arkadan gelir. Yazma başarısız olursa (ör. depolama dolu) ekran kaydedilmiş son hâline döner ve bildirim çıkar (`src/store/persist.ts`).
+- **Film/dizi verisi önbelleği** — TMDB yanıtları bellekte ve ayrı bir IndexedDB veritabanında tutulur (`src/services/queryCache.ts`, anahtarlar `src/services/queries.ts`). Görülmüş bir sayfa anında açılır, bayatsa arkada tazelenir; aynı istek iki kez gitmez; daha önce açılmış sayfalar çevrimdışı da açılır. Bu veritabanı kullanıcı verisi değildir, eşitlenmez.
+- **Niyet anında ön yükleme** — bir karta basıldığı an (dokunuş ~100 ms sonra tamamlanır), fareyle üzerinde durulduğunda ya da klavyeyle odaklanıldığında o sayfanın verisi çekilmeye başlar (`DetailLink`). Sayfa kodları da açılıştan birkaç saniye sonra, tarayıcı boştayken indirilir.
+- **Kaydırma hafızası** — yeni sayfa en üstten açılır, "geri" tam kalınan yere döner (`src/hooks/useScrollMemory.ts`). Keşfet filtreleri adres çubuğunda tutulur, geri dönünce kaybolmaz.
+- **Hafif listeler** — raylar ekrana yaklaşınca yerleşir (o zamana kadar birebir aynı yükseklikte bir yer tutucu durur, böylece kaydırma konumu kaymaz); her ray önce 8 kart çizer, kalanları tarayıcı boşken ekler.
+- **Sessiz eşitleme** — bulut simgesi yalnızca gerçekten veri gönderilip alınırken döner; açık sekmeler birbirine anında haber verir ve aynı anda yalnızca biri Drive'la konuşur.
+- **Kesintisiz güncelleme** — yeni sürüm arka planda iner ve uygulama gizliyken (sekme değişince, telefon kilitlenince) devreye girer; kullanım sırasında sayfa asla kendiliğinden yenilenmez.
+
 ## Dışa/İçe Aktarma Formatı
 
 **Veri Yönetimi** sayfasından tüm veri, sürüm numaralı tek bir JSON dosyası olarak dışa aktarılabilir:

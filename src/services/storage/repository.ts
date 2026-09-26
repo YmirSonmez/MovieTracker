@@ -91,6 +91,30 @@ let lastStamp = 0
 let localMax = 0
 const listeners = new Set<() => void>()
 
+/** Writes started but not yet committed. Stores update the screen before
+ * their write lands; anything that reloads stores from disk (a sync merge)
+ * waits for this to reach zero first, or it could briefly undo an edit the
+ * user can already see. */
+let pendingWrites = 0
+let settleWaiters: Array<() => void> = []
+
+function beginWrite(): () => void {
+  pendingWrites++
+  return () => {
+    pendingWrites--
+    if (pendingWrites === 0) {
+      const waiters = settleWaiters
+      settleWaiters = []
+      for (const resolve of waiters) resolve()
+    }
+  }
+}
+
+/** Resolves once no write is in flight. */
+export function writesSettled(): Promise<void> {
+  return pendingWrites === 0 ? Promise.resolve() : new Promise((resolve) => settleWaiters.push(resolve))
+}
+
 function nextStamp(): number {
   const now = Date.now()
   lastStamp = now > lastStamp ? now : lastStamp + 1
@@ -115,6 +139,16 @@ export function getLocalMax(): number {
   return localMax
 }
 
+/** Highest clock this tab has issued or seen. */
+export function getLastStamp(): number {
+  return lastStamp
+}
+
+/** Another tab wrote with this clock: never issue one at or below it. */
+export function observeStamp(stamp: number): void {
+  if (stamp > lastStamp) lastStamp = stamp
+}
+
 function isRecordTable(name: string): name is RecordTable {
   return (RECORD_TABLES as readonly string[]).includes(name)
 }
@@ -125,6 +159,15 @@ function isMetaKey(name: string): name is MetaKey {
 
 async function putRecords<T extends RecordTable>(table: T, values: RecordValue<T>[]): Promise<void> {
   if (values.length === 0) return
+  const done = beginWrite()
+  try {
+    await putRecordsNow(table, values)
+  } finally {
+    done()
+  }
+}
+
+async function putRecordsNow<T extends RecordTable>(table: T, values: RecordValue<T>[]): Promise<void> {
   const db = await getDB()
   const tx = db.transaction([table, 'syncClock'], 'readwrite')
   const store = loose(tx, table)
@@ -140,6 +183,15 @@ async function putRecords<T extends RecordTable>(table: T, values: RecordValue<T
 
 async function deleteRecords(table: RecordTable, ids: string[]): Promise<void> {
   if (ids.length === 0) return
+  const done = beginWrite()
+  try {
+    await deleteRecordsNow(table, ids)
+  } finally {
+    done()
+  }
+}
+
+async function deleteRecordsNow(table: RecordTable, ids: string[]): Promise<void> {
   const db = await getDB()
   const tx = db.transaction([table, 'syncClock'], 'readwrite')
   const store = loose(tx, table)
@@ -157,6 +209,15 @@ async function deleteRecords(table: RecordTable, ids: string[]): Promise<void> {
 /** `initial` writes a default that must never beat real data from another
  * device (clock 0) and doesn't count as an edit worth uploading. */
 async function putMeta(key: MetaKey, value: MetaValue, options?: { initial?: boolean }): Promise<void> {
+  const done = beginWrite()
+  try {
+    await putMetaNow(key, value, options)
+  } finally {
+    done()
+  }
+}
+
+async function putMetaNow(key: MetaKey, value: MetaValue, options?: { initial?: boolean }): Promise<void> {
   const db = await getDB()
   const tx = db.transaction(['meta', 'syncClock'], 'readwrite')
   const stamp = options?.initial ? 0 : nextStamp()
@@ -217,7 +278,12 @@ export const storage = {
     await deleteRecords('watchRecords', [id])
   },
   async deleteWatchRecordsForMedia(mediaId: string): Promise<void> {
-    await deleteRecords('watchRecords', await (await getDB()).getAllKeysFromIndex('watchRecords', 'by-mediaId', mediaId))
+    const done = beginWrite()
+    try {
+      await deleteRecords('watchRecords', await (await getDB()).getAllKeysFromIndex('watchRecords', 'by-mediaId', mediaId))
+    } finally {
+      done()
+    }
   },
 
   async getAllEpisodeProgress(): Promise<EpisodeProgress[]> {
@@ -230,7 +296,12 @@ export const storage = {
     await putRecords('episodeProgress', items)
   },
   async deleteEpisodeProgressForShow(showId: string): Promise<void> {
-    await deleteRecords('episodeProgress', await (await getDB()).getAllKeysFromIndex('episodeProgress', 'by-showId', showId))
+    const done = beginWrite()
+    try {
+      await deleteRecords('episodeProgress', await (await getDB()).getAllKeysFromIndex('episodeProgress', 'by-showId', showId))
+    } finally {
+      done()
+    }
   },
 
   async getAllRatings(): Promise<Rating[]> {

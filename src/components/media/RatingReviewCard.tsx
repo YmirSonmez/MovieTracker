@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { Pencil } from 'lucide-react'
 import { Button, Card, StarRating, Textarea } from '@/components/ui'
 import { useRatingsStore } from '@/store/ratingsStore'
 import { toast } from '@/store/toastStore'
 import type { MediaType } from '@/types/media'
 
-export function RatingReviewCard({ mediaId, mediaType }: { mediaId: string; mediaType: MediaType }) {
+export const RatingReviewCard = memo(function RatingReviewCard({ mediaId, mediaType }: { mediaId: string; mediaType: MediaType }) {
   const rating = useRatingsStore((s) => s.ratings[mediaId]?.value ?? 0)
   const review = useRatingsStore((s) => s.reviews[mediaId]?.text ?? '')
   const [editing, setEditing] = useState(false)
@@ -70,4 +70,4 @@ export function RatingReviewCard({ mediaId, mediaType }: { mediaId: string; medi
       </div>
     </Card>
   )
-}
+})

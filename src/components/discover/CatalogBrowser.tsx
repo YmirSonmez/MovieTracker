@@ -1,189 +1,128 @@
-import { useEffect, useState } from 'react'
-import { movieService, tvService } from '@/services'
-import { useMediaCacheStore } from '@/store/mediaCacheStore'
+import { useSearchParams } from 'react-router-dom'
+import { queries, useQuery, type QueryDef } from '@/services'
 import { Button, ErrorState, RailSkeleton } from '@/components/ui'
 import { MediaRail } from '@/components/media/MediaRail'
 import { MediaGrid } from '@/components/media/MediaGrid'
+import { usePagedList } from '@/hooks/usePagedList'
 import { DiscoverFilters } from './DiscoverFilters'
 import { DEFAULT_FILTERS, toDiscoverParams, type FilterState } from './filterTypes'
 import { ROUTES } from '@/utils/routes'
 import type { MediaType, MediaSummary } from '@/types/media'
-
-interface MoviePools {
-  trending: MediaSummary[]
-  popular: MediaSummary[]
-  topRated: MediaSummary[]
-  nowPlaying: MediaSummary[]
-  upcoming: MediaSummary[]
-}
-interface ShowPools {
-  trending: MediaSummary[]
-  popular: MediaSummary[]
-  topRated: MediaSummary[]
-  onTheAir: MediaSummary[]
-}
 
 interface CatalogBrowserProps {
   title: string
   lockedType?: MediaType
 }
 
+const SORTS: FilterState['sort'][] = ['popularity', 'rating', 'year']
+
+/** Filters live in the URL (?genre=18&year=2020...) rather than component
+ * state, so opening a title and coming back returns to the same filtered
+ * list instead of resetting it. */
+function readFilters(params: URLSearchParams, lockedType?: MediaType): FilterState {
+  const type = params.get('type')
+  const sort = params.get('sort') as FilterState['sort'] | null
+  return {
+    type: lockedType ?? (type === 'movie' || type === 'tv' ? type : 'all'),
+    genreId: params.get('genre') ?? DEFAULT_FILTERS.genreId,
+    year: params.get('year') ?? DEFAULT_FILTERS.year,
+    minRating: params.get('rating') ?? DEFAULT_FILTERS.minRating,
+    sort: sort && SORTS.includes(sort) ? sort : DEFAULT_FILTERS.sort,
+  }
+}
+
+function writeFilters(filters: FilterState, lockedType?: MediaType): URLSearchParams {
+  const params = new URLSearchParams()
+  if (!lockedType && filters.type !== DEFAULT_FILTERS.type) params.set('type', filters.type)
+  if (filters.genreId !== DEFAULT_FILTERS.genreId) params.set('genre', filters.genreId)
+  if (filters.year !== DEFAULT_FILTERS.year) params.set('year', filters.year)
+  if (filters.minRating !== DEFAULT_FILTERS.minRating) params.set('rating', filters.minRating)
+  if (filters.sort !== DEFAULT_FILTERS.sort) params.set('sort', filters.sort)
+  return params
+}
+
+/** One rail, loading on its own - each appears as soon as its own list is
+ * ready (instantly when cached) instead of all waiting for the slowest. */
+function QueryRail({ title, seeAllPath, query }: { title: string; seeAllPath: string; query: QueryDef<MediaSummary[]> }) {
+  const { data, error, isLoading, refetch } = useQuery(query)
+  if (isLoading) {
+    return (
+      <section className="flex flex-col gap-3" aria-busy="true">
+        <h2 className="text-lg font-semibold text-text">{title}</h2>
+        <RailSkeleton />
+      </section>
+    )
+  }
+  if (error) {
+    return (
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold text-text">{title}</h2>
+        <p className="flex items-center gap-3 text-sm text-text-muted">
+          Yüklenemedi.
+          <Button variant="outline" size="sm" onClick={refetch}>
+            Tekrar dene
+          </Button>
+        </p>
+      </section>
+    )
+  }
+  return <MediaRail title={title} seeAllPath={seeAllPath} items={data ?? []} />
+}
+
 export function CatalogBrowser({ title, lockedType }: CatalogBrowserProps) {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const filters = readFilters(searchParams, lockedType)
   const baseFilters: FilterState = { ...DEFAULT_FILTERS, type: lockedType ?? 'all' }
-  const [filters, setFilters] = useState<FilterState>(baseFilters)
-  const [movies, setMovies] = useState<MoviePools | null>(null)
-  const [shows, setShows] = useState<ShowPools | null>(null)
-  const [error, setError] = useState(false)
-  const [retryToken, setRetryToken] = useState(0)
-
-  useEffect(() => {
-    setError(false)
-    const tasks: Promise<unknown>[] = []
-    if (lockedType !== 'tv') {
-      tasks.push(
-        Promise.all([
-          movieService.getTrending(),
-          movieService.getPopular(),
-          movieService.getTopRated(),
-          movieService.getNowPlaying(),
-          movieService.getUpcoming(),
-        ]).then(([trending, popular, topRated, nowPlaying, upcoming]) => {
-          setMovies({ trending, popular, topRated, nowPlaying, upcoming })
-          useMediaCacheStore.getState().cache([...trending, ...popular, ...topRated, ...nowPlaying, ...upcoming])
-        }),
-      )
-    }
-    if (lockedType !== 'movie') {
-      tasks.push(
-        Promise.all([tvService.getTrending(), tvService.getPopular(), tvService.getTopRated(), tvService.getOnTheAir()]).then(
-          ([trending, popular, topRated, onTheAir]) => {
-            setShows({ trending, popular, topRated, onTheAir })
-            useMediaCacheStore.getState().cache([...trending, ...popular, ...topRated, ...onTheAir])
-          },
-        ),
-      )
-    }
-    Promise.all(tasks).catch(() => setError(true))
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- lockedType is fixed per page instance
-  }, [retryToken])
-
-  const loaded = (lockedType !== 'tv' ? movies !== null : true) && (lockedType !== 'movie' ? shows !== null : true)
   const isFiltering = JSON.stringify(filters) !== JSON.stringify(baseFilters)
 
-  // The default (unfiltered) view just shows a first page of each fixed
-  // TMDB list (trending/popular/...) - fine for that, but genre/year/rating
-  // filters need a real, paginated search instead of narrowing that same
-  // small, already-fetched pool (which is how this used to work, and why
-  // picking a genre surfaced almost nothing with no way to see more).
-  const [filterItems, setFilterItems] = useState<MediaSummary[]>([])
-  const [filterPage, setFilterPage] = useState(1)
-  const [filterHasMore, setFilterHasMore] = useState(true)
-  const [filterLoading, setFilterLoading] = useState(false)
-  const [filterLoadingMore, setFilterLoadingMore] = useState(false)
-  const [filterError, setFilterError] = useState(false)
-  const [filterRetryToken, setFilterRetryToken] = useState(0)
-
-  async function fetchFilterPage(page: number): Promise<MediaSummary[]> {
-    const params = toDiscoverParams(filters)
-    const tasks: Promise<MediaSummary[]>[] = []
-    if (filters.type !== 'tv') tasks.push(movieService.discover(params, page))
-    if (filters.type !== 'movie') tasks.push(tvService.discover(params, page))
-    const results = await Promise.all(tasks)
-    return results.flat()
-  }
-
-  useEffect(() => {
-    if (!isFiltering) return
-    let cancelled = false
-    setFilterLoading(true)
-    setFilterError(false)
-    setFilterItems([])
-    setFilterPage(1)
-    setFilterHasMore(true)
-    fetchFilterPage(1)
-      .then((results) => {
-        if (cancelled) return
-        setFilterItems(results)
-        setFilterHasMore(results.length > 0)
-        useMediaCacheStore.getState().cache(results)
-      })
-      .catch(() => {
-        if (!cancelled) setFilterError(true)
-      })
-      .finally(() => {
-        if (!cancelled) setFilterLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch whenever the filter criteria themselves (or filterRetryToken) change
-  }, [isFiltering, filters, filterRetryToken])
-
-  async function loadMoreFiltered() {
-    if (filterLoadingMore) return
-    setFilterLoadingMore(true)
-    try {
-      const nextPage = filterPage + 1
-      const results = await fetchFilterPage(nextPage)
-      setFilterItems((prev) => {
-        const seen = new Set(prev.map((i) => i.id))
-        return [...prev, ...results.filter((i) => !seen.has(i.id))]
-      })
-      setFilterPage(nextPage)
-      setFilterHasMore(results.length > 0)
-      useMediaCacheStore.getState().cache(results)
-    } catch {
-      // Leave existing results in place - the button stays put so the user can just try again.
-    } finally {
-      setFilterLoadingMore(false)
-    }
-  }
+  // The default (unfiltered) view shows the first page of each fixed TMDB
+  // list; genre/year/rating filters need a real, paginated search instead.
+  const params = toDiscoverParams(filters)
+  const filtered = usePagedList(isFiltering ? `discover:${filters.type}:${JSON.stringify(params)}` : null, (page) =>
+    queries.discover(filters.type, params, page),
+  )
 
   return (
     <div className="flex flex-col gap-8 py-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-text">{title}</h1>
-        <DiscoverFilters value={filters} onChange={setFilters} />
+        <DiscoverFilters value={filters} onChange={(next) => setSearchParams(writeFilters(next, lockedType), { replace: true })} />
       </div>
 
       {isFiltering ? (
-        filterError && filterItems.length === 0 ? (
-          <ErrorState onRetry={() => setFilterRetryToken((t) => t + 1)} />
-        ) : filterLoading ? (
+        filtered.error ? (
+          <ErrorState onRetry={filtered.refetch} />
+        ) : filtered.isLoading ? (
           <RailSkeleton />
         ) : (
           <>
-            <MediaGrid items={filterItems} />
-            {filterHasMore && filterItems.length > 0 && (
+            <MediaGrid items={filtered.items} />
+            {filtered.hasMore && filtered.items.length > 0 && (
               <div className="flex justify-center">
-                <Button variant="outline" onClick={loadMoreFiltered} loading={filterLoadingMore} disabled={filterLoadingMore}>
+                <Button variant="outline" onClick={() => void filtered.loadMore()} loading={filtered.loadingMore} disabled={filtered.loadingMore}>
                   Daha Fazla Yükle
                 </Button>
               </div>
             )}
           </>
         )
-      ) : error ? (
-        <ErrorState onRetry={() => setRetryToken((t) => t + 1)} />
-      ) : !loaded ? (
-        <RailSkeleton />
       ) : (
         <>
-          {movies && (
+          {lockedType !== 'tv' && (
             <>
-              <MediaRail title="Bu Hafta Trend Filmler" seeAllPath={ROUTES.catalogList('movie', 'trending')} items={movies.trending} />
-              <MediaRail title="Popüler Filmler" seeAllPath={ROUTES.catalogList('movie', 'popular')} items={movies.popular} />
-              <MediaRail title="En Çok Beğenilen Filmler" seeAllPath={ROUTES.catalogList('movie', 'topRated')} items={movies.topRated} />
-              <MediaRail title="Yeni Vizyona Girenler" seeAllPath={ROUTES.catalogList('movie', 'nowPlaying')} items={movies.nowPlaying} />
-              <MediaRail title="Yakında" seeAllPath={ROUTES.catalogList('movie', 'upcoming')} items={movies.upcoming} />
+              <QueryRail title="Bu Hafta Trend Filmler" seeAllPath={ROUTES.catalogList('movie', 'trending')} query={queries.movieList('trending')} />
+              <QueryRail title="Popüler Filmler" seeAllPath={ROUTES.catalogList('movie', 'popular')} query={queries.movieList('popular')} />
+              <QueryRail title="En Çok Beğenilen Filmler" seeAllPath={ROUTES.catalogList('movie', 'topRated')} query={queries.movieList('topRated')} />
+              <QueryRail title="Yeni Vizyona Girenler" seeAllPath={ROUTES.catalogList('movie', 'nowPlaying')} query={queries.movieList('nowPlaying')} />
+              <QueryRail title="Yakında" seeAllPath={ROUTES.catalogList('movie', 'upcoming')} query={queries.movieList('upcoming')} />
             </>
           )}
-          {shows && (
+          {lockedType !== 'movie' && (
             <>
-              <MediaRail title="Bu Hafta Trend Diziler" seeAllPath={ROUTES.catalogList('tv', 'trending')} items={shows.trending} />
-              <MediaRail title="Popüler Diziler" seeAllPath={ROUTES.catalogList('tv', 'popular')} items={shows.popular} />
-              <MediaRail title="En Çok Beğenilen Diziler" seeAllPath={ROUTES.catalogList('tv', 'topRated')} items={shows.topRated} />
-              <MediaRail title="Yayında Olanlar" seeAllPath={ROUTES.catalogList('tv', 'onTheAir')} items={shows.onTheAir} />
+              <QueryRail title="Bu Hafta Trend Diziler" seeAllPath={ROUTES.catalogList('tv', 'trending')} query={queries.tvList('trending')} />
+              <QueryRail title="Popüler Diziler" seeAllPath={ROUTES.catalogList('tv', 'popular')} query={queries.tvList('popular')} />
+              <QueryRail title="En Çok Beğenilen Diziler" seeAllPath={ROUTES.catalogList('tv', 'topRated')} query={queries.tvList('topRated')} />
+              <QueryRail title="Yayında Olanlar" seeAllPath={ROUTES.catalogList('tv', 'onTheAir')} query={queries.tvList('onTheAir')} />
             </>
           )}
         </>

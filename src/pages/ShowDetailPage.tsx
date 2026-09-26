@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { Bookmark, Check, Heart, ListPlus, Trash2, X } from 'lucide-react'
-import { tvService, isLiveDataConfigured } from '@/services'
+import { isLiveDataConfigured, queries, useQuery } from '@/services'
 import { getAllSummaries } from '@/data/catalog'
 import { toSummary } from '@/utils/media'
 import { findSimilarByGenre } from '@/utils/recommend'
@@ -17,7 +17,6 @@ import { MediaRail } from '@/components/media/MediaRail'
 import { RatingReviewCard } from '@/components/media/RatingReviewCard'
 import { AddToListDialog } from '@/components/media/AddToListDialog'
 import { EpisodeRow } from '@/components/media/EpisodeRow'
-import type { TVShowDetail } from '@/types/media'
 
 const TV_STATUS_LABEL: Record<string, string> = {
   returning: 'Devam Ediyor',
@@ -30,11 +29,16 @@ const TV_STATUS_LABEL: Record<string, string> = {
 
 export function ShowDetailPage() {
   const { mediaId = '' } = useParams()
+  // Keyed so the season picker and dialogs start fresh when one show page
+  // links straight to another.
+  return <ShowDetail key={mediaId} mediaId={mediaId} />
+}
+
+function ShowDetail({ mediaId }: { mediaId: string }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const continueParam = searchParams.get('continue')
 
-  const [detail, setDetail] = useState<TVShowDetail | null | undefined>(undefined)
-  const [failed, setFailed] = useState(false)
+  const { data: detail, error, isLoading, refetch } = useQuery(queries.showDetail(mediaId))
   const [selectedSeason, setSelectedSeason] = useState<number | null>(null)
   const [listDialogOpen, setListDialogOpen] = useState(false)
   const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false)
@@ -45,22 +49,8 @@ export function ShowDetailPage() {
   const { toggleFavorite, addToWatchlist, removeFromWatchlist } = useLibraryActions()
 
   useEffect(() => {
-    let cancelled = false
-    setDetail(undefined)
-    setFailed(false)
-    setSelectedSeason(null)
-    tvService
-      .getDetail(mediaId)
-      .then((d) => {
-        if (cancelled) return
-        setDetail(d)
-        if (d) useMediaCacheStore.getState().cache([toSummary(d)])
-      })
-      .catch(() => !cancelled && setFailed(true))
-    return () => {
-      cancelled = true
-    }
-  }, [mediaId])
+    if (detail) void useMediaCacheStore.getState().cache([toSummary(detail)])
+  }, [detail])
 
   useEffect(() => {
     if (!detail || selectedSeason !== null) return
@@ -95,8 +85,8 @@ export function ShowDetailPage() {
     return detail.recommendations.length > 0 ? detail.recommendations : similar
   }, [detail, similar])
 
-  if (failed) return <ErrorState onRetry={() => setDetail(undefined)} />
-  if (detail === undefined) return <DetailSkeleton />
+  if (error) return <ErrorState onRetry={refetch} />
+  if (isLoading || detail === undefined) return <DetailSkeleton />
   if (detail === null) {
     return <ErrorState title="Dizi bulunamadı" description="Bu dizi kaldırılmış ya da hiç var olmamış olabilir." />
   }

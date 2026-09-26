@@ -12,8 +12,11 @@ import { useSyncStore } from '@/store/syncStore'
 import { toast } from '@/store/toastStore'
 import { applyTheme, watchSystemTheme } from '@/utils/theme'
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts'
+import { useScrollMemory } from '@/hooks/useScrollMemory'
+import { preloadPages } from '@/utils/lazyPage'
 import { getAccessToken, getAccount, isGoogleConfigured } from '@/services/auth/google'
 import { hasSyncedBefore, startSync, syncNow } from '@/services/sync/engine'
+import { warmQueryCache } from '@/services'
 import { ROUTES } from '@/utils/routes'
 
 /** A first-time device waits this long at most for its data before showing
@@ -34,6 +37,7 @@ export function AppLayout() {
     if (signedOut) return
     let cancelled = false
     let stopSync: (() => void) | undefined
+    warmQueryCache()
     void (async () => {
       await bootStores()
       if (cancelled) return
@@ -42,6 +46,7 @@ export function AppLayout() {
       setFetchingAccount(firstTime)
       setReady(true)
       stopSync = startSync()
+      preloadPages()
       if (firstTime) {
         await Promise.race([syncNow(), new Promise((resolve) => setTimeout(resolve, FIRST_SYNC_WAIT_MS))])
         if (!cancelled) setFetchingAccount(false)
@@ -71,6 +76,7 @@ export function AppLayout() {
   }, [signedOut])
 
   useGlobalShortcuts(() => setPaletteOpen(true))
+  useScrollMemory(ready && !fetchingAccount)
 
   if (signedOut) return <Navigate to={ROUTES.login} replace />
   if (!ready) return <BootSplash />

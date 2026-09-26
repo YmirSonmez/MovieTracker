@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { storage } from '@/services/storage/repository'
+import { persist } from './persist'
 import { DEFAULT_SETTINGS } from '@/types/user'
 import type { UserProfile, UserSettings } from '@/types/user'
 
@@ -38,13 +39,13 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
 
   async updateProfile(patch) {
     const updated = { ...get().profile, ...patch }
-    await storage.putProfile(updated)
     set({ profile: updated })
+    await persist(storage.putProfile(updated), () => get().hydrate())
   },
 
   async updateSettings(patch) {
     const updated = { ...get().settings, ...patch }
-    await storage.putSettings(updated)
     set({ settings: updated })
+    await persist(storage.putSettings(updated), () => get().hydrate())
   },
 }))

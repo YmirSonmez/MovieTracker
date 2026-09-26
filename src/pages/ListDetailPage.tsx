@@ -5,6 +5,7 @@ import { useListsStore } from '@/store/listsStore'
 import { useMediaCacheStore } from '@/store/mediaCacheStore'
 import { Button, ConfirmDialog, EmptyState, Input, Modal, Textarea } from '@/components/ui'
 import { ROUTES } from '@/utils/routes'
+import { DetailLink } from '@/components/media/DetailLink'
 
 export function ListDetailPage() {
   const { listId = '' } = useParams()
@@ -66,17 +67,16 @@ export function ListDetailPage() {
           {list.itemIds.map((mediaId, index) => {
             const summary = mediaCache[mediaId]
             if (!summary) return null
-            const detailPath = summary.mediaType === 'movie' ? ROUTES.movieDetail(summary.id) : ROUTES.showDetail(summary.id)
             return (
               <div key={mediaId} className="flex items-center gap-3 rounded-md border border-border bg-surface p-2">
                 <span className="w-6 shrink-0 text-center font-mono text-sm text-text-subtle">{index + 1}</span>
-                <Link to={detailPath} className="h-20 w-14 shrink-0 overflow-hidden rounded-sm bg-surface-2">
+                <DetailLink mediaId={summary.id} mediaType={summary.mediaType} className="h-20 w-14 shrink-0 overflow-hidden rounded-sm bg-surface-2">
                   {summary.posterPath && <img src={summary.posterPath} alt="" className="h-full w-full object-cover" />}
-                </Link>
-                <Link to={detailPath} className="min-w-0 flex-1">
+                </DetailLink>
+                <DetailLink mediaId={summary.id} mediaType={summary.mediaType} className="min-w-0 flex-1">
                   <p className="truncate font-medium text-text hover:text-accent">{summary.title}</p>
                   <p className="text-xs text-text-subtle">{summary.year ?? '—'}</p>
-                </Link>
+                </DetailLink>
                 <div className="flex shrink-0 items-center gap-1">
                   <Button size="icon-sm" variant="ghost" aria-label="Yukarı taşı" disabled={index === 0} onClick={() => moveItem(index, 'up')}>
                     <ChevronUp className="h-4 w-4" />

@@ -1,12 +1,11 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { Bookmark, Check, ChevronDown, ChevronUp, Pencil, X } from 'lucide-react'
 import { useLibraryStore } from '@/store/libraryStore'
 import { useMediaCacheStore } from '@/store/mediaCacheStore'
 import { useLibraryActions } from '@/hooks/useLibraryActions'
 import { toast } from '@/store/toastStore'
 import { Button, Card, EmptyState, Select, Textarea } from '@/components/ui'
-import { ROUTES } from '@/utils/routes'
+import { DetailLink } from '@/components/media/DetailLink'
 import type { LibraryEntry, WatchlistPriority } from '@/types/watch'
 import type { MediaSummary } from '@/types/media'
 
@@ -31,20 +30,19 @@ function WatchlistRow({
   const { markWatched, removeFromWatchlist } = useLibraryActions()
   const [editingNote, setEditingNote] = useState(false)
   const [note, setNote] = useState(entry.watchlistNote ?? '')
-  const detailPath = summary.mediaType === 'movie' ? ROUTES.movieDetail(summary.id) : ROUTES.showDetail(summary.id)
 
   return (
     <Card className="flex flex-col gap-3 p-3 sm:flex-row sm:items-start">
-      <Link to={detailPath} className="h-24 w-16 shrink-0 overflow-hidden rounded-sm bg-surface-2">
+      <DetailLink mediaId={summary.id} mediaType={summary.mediaType} className="h-24 w-16 shrink-0 overflow-hidden rounded-sm bg-surface-2">
         {summary.posterPath && <img src={summary.posterPath} alt="" className="h-full w-full object-cover" />}
-      </Link>
+      </DetailLink>
 
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <Link to={detailPath} className="font-medium text-text hover:text-accent">
+            <DetailLink mediaId={summary.id} mediaType={summary.mediaType} className="font-medium text-text hover:text-accent">
               {summary.title}
-            </Link>
+            </DetailLink>
             <p className="text-xs text-text-subtle">{summary.year ?? '—'}</p>
           </div>
           <Select

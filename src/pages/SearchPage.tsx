@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Clock, Search, Trash2, X } from 'lucide-react'
-import { searchService } from '@/services'
-import { useMediaCacheStore } from '@/store/mediaCacheStore'
+import { queries, useQuery } from '@/services'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { addRecentSearch, clearRecentSearches, getRecentSearches } from '@/utils/recentSearches'
 import { Avatar, EmptyState, ErrorState, Input, RailSkeleton, Select } from '@/components/ui'
 import { MediaGrid } from '@/components/media/MediaGrid'
-import type { MediaSummary, Person } from '@/types/media'
+import type { MediaSummary } from '@/types/media'
 
 type SortOption = 'relevance' | 'rating' | 'year'
 
@@ -22,42 +21,31 @@ export function SearchPage() {
   const [query, setQuery] = useState(searchParams.get('q') ?? '')
   const [sort, setSort] = useState<SortOption>('relevance')
   const [recent, setRecent] = useState<string[]>([])
-  const [results, setResults] = useState<{ movies: MediaSummary[]; shows: MediaSummary[]; people: Person[] } | null>(null)
-  const [searchError, setSearchError] = useState(false)
-  const [retryToken, setRetryToken] = useState(0)
   const debouncedQuery = useDebouncedValue(query.trim(), 300)
+  // Cached per query for the session: going back to a search, or retyping
+  // one, shows its results instantly.
+  const search = useQuery(debouncedQuery ? queries.search(debouncedQuery) : null)
+  // While the next query loads, keep the previous results on screen (dimmed)
+  // instead of flashing back to a skeleton on every keystroke.
+  const previous = useRef(search.data ?? null)
+  if (search.data) previous.current = search.data
+  const refreshing = !search.data && search.isLoading && previous.current !== null
+  const results = search.data ?? (refreshing ? previous.current : null)
+  const searchError = Boolean(search.error)
 
   useEffect(() => {
     setRecent(getRecentSearches())
   }, [])
 
   useEffect(() => {
-    if (!debouncedQuery) {
-      setResults(null)
-      setSearchError(false)
-      setSearchParams({}, { replace: true })
-      return
-    }
-    let cancelled = false
-    setSearchError(false)
-    setResults(null)
-    setSearchParams({ q: debouncedQuery }, { replace: true })
-    searchService
-      .searchAll(debouncedQuery)
-      .then((r) => {
-        if (cancelled) return
-        setResults(r)
-        useMediaCacheStore.getState().cache([...r.movies, ...r.shows])
-        setRecent(addRecentSearch(debouncedQuery))
-      })
-      .catch(() => {
-        if (!cancelled) setSearchError(true)
-      })
-    return () => {
-      cancelled = true
-    }
+    setSearchParams(debouncedQuery ? { q: debouncedQuery } : {}, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- setSearchParams identity is stable across renders (React Router)
-  }, [debouncedQuery, retryToken])
+  }, [debouncedQuery])
+
+  useEffect(() => {
+    if (search.data && debouncedQuery) setRecent(addRecentSearch(debouncedQuery))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- record a search once its results arrive
+  }, [search.data])
 
   const sortedMovies = useMemo(() => sortMediaItems(results?.movies ?? [], sort), [results, sort])
   const sortedShows = useMemo(() => sortMediaItems(results?.shows ?? [], sort), [results, sort])
@@ -124,7 +112,7 @@ export function SearchPage() {
         </div>
       )}
 
-      {hasQuery && searchError && <ErrorState onRetry={() => setRetryToken((t) => t + 1)} />}
+      {hasQuery && searchError && <ErrorState onRetry={search.refetch} />}
 
       {hasQuery && !searchError && results === null && <RailSkeleton />}
 
@@ -133,7 +121,7 @@ export function SearchPage() {
       )}
 
       {hasQuery && !searchError && results !== null && hasAnyResults && (
-        <div className="flex flex-col gap-8">
+        <div aria-busy={refreshing} className={`flex flex-col gap-8 transition-opacity duration-150 ${refreshing ? 'opacity-60' : ''}`}>
           {sortedMovies.length > 0 && (
             <section className="flex flex-col gap-3">
               <h2 className="text-lg font-semibold text-text">Filmler</h2>

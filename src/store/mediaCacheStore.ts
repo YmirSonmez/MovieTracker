@@ -26,11 +26,13 @@ export const useMediaCacheStore = create<MediaCacheState>((set, get) => ({
 
   async cache(items) {
     if (items.length === 0) return
-    await storage.cacheMedia(items)
     set((state) => {
       const next = { ...state.items }
       for (const item of items) next[item.id] = item
       return { items: next }
     })
+    // Only a cache of TMDB metadata - a failed write costs a re-fetch
+    // later, not user data, so it isn't worth interrupting anyone over.
+    await storage.cacheMedia(items).catch(() => {})
   },
 }))

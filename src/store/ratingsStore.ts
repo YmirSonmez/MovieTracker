@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { storage } from '@/services/storage/repository'
+import { persist } from './persist'
 import type { MediaType } from '@/types/media'
 import type { Rating, Review } from '@/types/watch'
 
@@ -51,17 +52,17 @@ export const useRatingsStore = create<RatingsState>((set, get) => ({
       createdAt: existing?.createdAt ?? timestamp,
       updatedAt: timestamp,
     }
-    await storage.putRating(rating)
     set((state) => ({ ratings: { ...state.ratings, [mediaId]: rating } }))
+    await persist(storage.putRating(rating), () => get().hydrate())
   },
 
   async clearRating(mediaId) {
-    await storage.deleteRating(mediaId)
     set((state) => {
       const ratings = { ...state.ratings }
       delete ratings[mediaId]
       return { ratings }
     })
+    await persist(storage.deleteRating(mediaId), () => get().hydrate())
   },
 
   getReview(mediaId) {
@@ -79,16 +80,16 @@ export const useRatingsStore = create<RatingsState>((set, get) => ({
       createdAt: existing?.createdAt ?? timestamp,
       updatedAt: timestamp,
     }
-    await storage.putReview(review)
     set((state) => ({ reviews: { ...state.reviews, [mediaId]: review } }))
+    await persist(storage.putReview(review), () => get().hydrate())
   },
 
   async clearReview(mediaId) {
-    await storage.deleteReview(mediaId)
     set((state) => {
       const reviews = { ...state.reviews }
       delete reviews[mediaId]
       return { reviews }
     })
+    await persist(storage.deleteReview(mediaId), () => get().hydrate())
   },
 }))

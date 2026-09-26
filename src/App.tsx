@@ -5,26 +5,29 @@ import { LoginPage } from '@/pages/LoginPage'
 import { ROUTE_PATTERNS, ROUTES } from '@/utils/routes'
 import { DetailSkeleton } from '@/components/media/DetailSkeleton'
 import { RailSkeleton } from '@/components/ui'
+import { lazyPage } from '@/utils/lazyPage'
 
-const HomePage = lazy(() => import('@/pages/HomePage').then((m) => ({ default: m.HomePage })))
-const DiscoverPage = lazy(() => import('@/pages/DiscoverPage').then((m) => ({ default: m.DiscoverPage })))
-const MoviesPage = lazy(() => import('@/pages/MoviesPage').then((m) => ({ default: m.MoviesPage })))
-const TVShowsPage = lazy(() => import('@/pages/TVShowsPage').then((m) => ({ default: m.TVShowsPage })))
-const LibraryPage = lazy(() => import('@/pages/LibraryPage').then((m) => ({ default: m.LibraryPage })))
-const WatchlistPage = lazy(() => import('@/pages/WatchlistPage').then((m) => ({ default: m.WatchlistPage })))
-const StatisticsPage = lazy(() => import('@/pages/StatisticsPage').then((m) => ({ default: m.StatisticsPage })))
-const ListsPage = lazy(() => import('@/pages/ListsPage').then((m) => ({ default: m.ListsPage })))
-const ListDetailPage = lazy(() => import('@/pages/ListDetailPage').then((m) => ({ default: m.ListDetailPage })))
-const SearchPage = lazy(() => import('@/pages/SearchPage').then((m) => ({ default: m.SearchPage })))
-const MovieDetailPage = lazy(() => import('@/pages/MovieDetailPage').then((m) => ({ default: m.MovieDetailPage })))
-const ShowDetailPage = lazy(() => import('@/pages/ShowDetailPage').then((m) => ({ default: m.ShowDetailPage })))
-const FavoritesPage = lazy(() => import('@/pages/FavoritesPage').then((m) => ({ default: m.FavoritesPage })))
-const ProfilePage = lazy(() => import('@/pages/ProfilePage').then((m) => ({ default: m.ProfilePage })))
-const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
-const DataManagementPage = lazy(() => import('@/pages/DataManagementPage').then((m) => ({ default: m.DataManagementPage })))
-const CatalogListPage = lazy(() => import('@/pages/CatalogListPage').then((m) => ({ default: m.CatalogListPage })))
+const HomePage = lazyPage(() => import('@/pages/HomePage').then((m) => m.HomePage))
+const DiscoverPage = lazyPage(() => import('@/pages/DiscoverPage').then((m) => m.DiscoverPage))
+const MoviesPage = lazyPage(() => import('@/pages/MoviesPage').then((m) => m.MoviesPage))
+const TVShowsPage = lazyPage(() => import('@/pages/TVShowsPage').then((m) => m.TVShowsPage))
+const LibraryPage = lazyPage(() => import('@/pages/LibraryPage').then((m) => m.LibraryPage))
+const WatchlistPage = lazyPage(() => import('@/pages/WatchlistPage').then((m) => m.WatchlistPage))
+// Not preloaded in the background: it carries the charts library.
+const StatisticsPage = lazyPage(() => import('@/pages/StatisticsPage').then((m) => m.StatisticsPage), { preload: false })
+const ListsPage = lazyPage(() => import('@/pages/ListsPage').then((m) => m.ListsPage))
+const ListDetailPage = lazyPage(() => import('@/pages/ListDetailPage').then((m) => m.ListDetailPage))
+const SearchPage = lazyPage(() => import('@/pages/SearchPage').then((m) => m.SearchPage))
+const MovieDetailPage = lazyPage(() => import('@/pages/MovieDetailPage').then((m) => m.MovieDetailPage))
+const ShowDetailPage = lazyPage(() => import('@/pages/ShowDetailPage').then((m) => m.ShowDetailPage))
+const FavoritesPage = lazyPage(() => import('@/pages/FavoritesPage').then((m) => m.FavoritesPage))
+const ProfilePage = lazyPage(() => import('@/pages/ProfilePage').then((m) => m.ProfilePage))
+const SettingsPage = lazyPage(() => import('@/pages/SettingsPage').then((m) => m.SettingsPage))
+const DataManagementPage = lazyPage(() => import('@/pages/DataManagementPage').then((m) => m.DataManagementPage))
+const CatalogListPage = lazyPage(() => import('@/pages/CatalogListPage').then((m) => m.CatalogListPage))
+// Takes props (the placeholder text), so plain lazy() rather than lazyPage().
 const ComingSoonPage = lazy(() => import('@/pages/ComingSoonPage').then((m) => ({ default: m.ComingSoonPage })))
-const NotFoundPage = lazy(() => import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
+const NotFoundPage = lazyPage(() => import('@/pages/NotFoundPage').then((m) => m.NotFoundPage))
 
 function PageFallback() {
   return (
