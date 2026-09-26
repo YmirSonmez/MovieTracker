@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0b0d" />
+    <title>Gizlilik Politikası – Movie Tracker</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        background: #0b0b0d;
+        color: #f5f5f7;
+        font: 16px/1.65 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        -webkit-text-size-adjust: 100%;
+      }
+      main { max-width: 42rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+      h1 { font-size: 1.75rem; line-height: 1.2; margin: 0 0 0.25rem; text-wrap: balance; }
+      h2 { font-size: 1.125rem; margin: 2rem 0 0.5rem; }
+      p, li { color: #a8a8b3; }
+      ul { padding-left: 1.25rem; }
+      code { font-size: 0.875em; color: #f5f5f7; background: #16161a; padding: 0.1em 0.35em; border-radius: 4px; }
+      a { color: #f0a93a; }
+      .meta { font-size: 0.875rem; color: #6f6f7a; margin: 0 0 2rem; }
+      hr { border: 0; border-top: 1px solid #2a2a31; margin: 3rem 0; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Gizlilik Politikası</h1>
+      <p class="meta">Movie Tracker · Son güncelleme: 26 Eylül 2026</p>
+
+      <p>
+        Movie Tracker, izlediğin film ve dizileri takip etmen için kişisel bir uygulamadır. Uygulamanın kendine ait bir
+        sunucusu yoktur: tüm veriler senin tarayıcında ve <strong>senin kendi Google Drive hesabında</strong> tutulur.
+      </p>
+
+      <h2>Hangi Google verilerine erişiyoruz?</h2>
+      <ul>
+        <li><strong>E-posta adresin</strong> (<code>email</code>): Hangi hesapla giriş yaptığını göstermek ve oturumu o hesaba bağlamak için.</li>
+        <li>
+          <strong>Drive uygulama veri klasörü</strong> (<code>drive.appdata</code>): Kitaplığını, puanlarını, listelerini ve
+          ayarlarını cihazların arasında eşitlemek için. Bu, Drive'ında sana görünmeyen ve yalnızca bu uygulamanın
+          erişebildiği özel bir klasördür. Drive'ındaki diğer dosyalarını göremeyiz.
+        </li>
+        <li>
+          <strong>Uygulamanın oluşturduğu dosyalar</strong> (<code>drive.file</code>): Yalnızca uygulamanın daha önceki bir
+          sürümünün oluşturduğu <code>movie-tracker-backup.json</code> yedeğini bir kereye mahsus yeni sisteme taşımak için.
+          Başka hiçbir dosyana erişilmez.
+        </li>
+      </ul>
+
+      <h2>Veriler nerede tutulur, kimle paylaşılır?</h2>
+      <ul>
+        <li>Veriler cihazındaki tarayıcı deposunda (IndexedDB) ve Google Drive'ındaki uygulama klasöründe tutulur.</li>
+        <li>Verilerin hiçbir zaman bizim ya da üçüncü bir tarafın sunucusuna gönderilmez, satılmaz, reklam için kullanılmaz.</li>
+        <li>Google oturum anahtarı yalnızca tarayıcında tutulur ve yaklaşık bir saat sonra geçersiz olur.</li>
+        <li>
+          Film ve dizi bilgileri (başlık, afiş vb.) için tarayıcın doğrudan <a href="https://www.themoviedb.org/">TMDB</a>'ye
+          arama istekleri gönderebilir. Bu isteklere kişisel izleme geçmişin eklenmez.
+        </li>
+        <li>Analitik ya da takip kodu yoktur.</li>
+      </ul>
+
+      <h2>Verilerini nasıl silersin?</h2>
+      <ul>
+        <li><strong>Tüm cihazlardan ve Drive'dan:</strong> Uygulamada Veri Yönetimi → "Tüm verimi sil".</li>
+        <li><strong>Sadece bu cihazdan:</strong> Ayarlar → "Çıkış yap" → "Bu cihazdaki verileri de sil".</li>
+        <li>
+          <strong>Uygulamanın erişimini kaldırmak:</strong>
+          <a href="https://myaccount.google.com/connections">Google Hesabı → Üçüncü taraf bağlantıları</a> sayfasından
+          Movie Tracker'ın erişimini istediğin an iptal edebilirsin.
+        </li>
+      </ul>
+
+      <h2>Google API Hizmetleri Kullanıcı Verileri Politikası</h2>
+      <p>
+        Movie Tracker'ın Google API'lerinden aldığı bilgileri kullanması ve başka herhangi bir uygulamaya aktarması,
+        <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Hizmetleri Kullanıcı Verileri Politikası</a>'na,
+        Sınırlı Kullanım (Limited Use) şartları dahil olmak üzere uygundur.
+      </p>
+
+      <h2>İletişim</h2>
+      <p>
+        Sorular ve talepler için:
+        <a href="https://github.com/YmirSonmez/MovieTracker/issues">github.com/YmirSonmez/MovieTracker/issues</a>
+      </p>
+
+      <hr />
+
+      <h1>Privacy Policy</h1>
+      <p class="meta">Movie Tracker · Last updated: September 26, 2026</p>
+
+      <p>
+        Movie Tracker is a personal app for tracking the movies and TV shows you watch. It has no server of its own: all data
+        lives in your browser and in <strong>your own Google Drive account</strong>.
+      </p>
+
+      <h2>Google data we access</h2>
+      <ul>
+        <li><strong>Your email address</strong> (<code>email</code>): to show which account you're signed in with.</li>
+        <li>
+          <strong>Drive app data folder</strong> (<code>drive.appdata</code>): to sync your library, ratings, lists and settings
+          across your devices. This is a hidden folder only this app can access; we cannot see any of your other Drive files.
+        </li>
+        <li>
+          <strong>Files created by the app</strong> (<code>drive.file</code>): only to migrate the
+          <code>movie-tracker-backup.json</code> backup created by an earlier version of the app, once.
+        </li>
+      </ul>
+
+      <h2>Storage and sharing</h2>
+      <p>
+        Your data is stored in your browser (IndexedDB) and in your Drive's app data folder. It is never sent to our or any
+        third party's servers, never sold, and never used for advertising. Your Google access token is kept only in your
+        browser and expires after about an hour. Your browser may query <a href="https://www.themoviedb.org/">TMDB</a> directly
+        for movie and TV metadata; your viewing history is never included in those requests. There is no analytics or tracking.
+      </p>
+
+      <h2>Deleting your data</h2>
+      <p>
+        Everywhere: Data Management → "Tüm verimi sil". This device only: Settings → "Çıkış yap" → delete local data.
+        Revoke the app's access at any time from
+        <a href="https://myaccount.google.com/connections">Google Account → Third-party connections</a>.
+      </p>
+
+      <h2>Google API Services User Data Policy</h2>
+      <p>
+        Movie Tracker's use and transfer of information received from Google APIs to any other app will adhere to the
+        <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>,
+        including the Limited Use requirements.
+      </p>
+
+      <h2>Contact</h2>
+      <p><a href="https://github.com/YmirSonmez/MovieTracker/issues">github.com/YmirSonmez/MovieTracker/issues</a></p>
+
+      <p><a href="./">← Movie Tracker'a dön</a></p>
+    </main>
+  </body>
+</html>

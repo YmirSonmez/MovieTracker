@@ -43,6 +43,9 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         navigateFallback: 'index.html',
+        // A real standalone page (Google's consent screen links to it), not
+        // an SPA route - must never be answered with index.html.
+        navigateFallbackDenylist: [/privacy\.html$/],
       },
     }),
   ],
