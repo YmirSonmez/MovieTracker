@@ -15,7 +15,7 @@ Kişisel film ve dizi takip paneli. TV Time, Letterboxd, Trakt gibi uygulamalard
 - **İzleme Listesi** — öncelik seviyeleri (yüksek/orta/düşük), kişisel not, manuel sıralama, doğrudan izledim işaretleme.
 - **İstatistikler** — toplam film/dizi/bölüm, toplam izleme süresi, ortalama puan (film/bölüm ayrı), tür dağılımı, puan dağılımı, aylık aktivite ve izleme süresi grafikleri (yıl filtresiyle).
 - **Favoriler & Listeler** — favori film/dizi galerisi, sınırsız kişisel liste (oluştur/yeniden adlandır/sil/sırala).
-- **Profil** — avatar, görünen ad, favori türler, favori yapımlar, üyelik özeti.
+- **Profil** — avatar, görünen ad, favori türler, favori yapımlar, kişisel notlar (ekle/düzenle/sil, cihazlar arası eşitlenir), üyelik özeti.
 - **Veri Yönetimi** — tüm veriyi JSON (tam yedek) veya CSV (kitaplık tablosu) olarak dışa aktarma; sürüm kontrollü içe aktarma (önizleme + birleştir/değiştir seçimi); tüm veriyi her yerden silme (onaylı).
 - **Kendi TMDB anahtarın** — Ayarlar'dan kendi ücretsiz TMDB anahtarını gir; kaydederken canlı doğrulanır, hesabınla diğer cihazlarına eşitlenir ve JSON dışa aktarmaya dahil edilir.
 - **Google hesabıyla giriş + otomatik eşitleme** — bir kez Google ile giriş yaparsın; verin kendi Drive'ının gizli uygulama klasöründe tutulur ve tüm cihazların arasında arka planda, kayıt kayıt birleştirilerek eşitlenir. Çakışma sorusu yok, saatlik oturum kilidi yok, sunucu yok.

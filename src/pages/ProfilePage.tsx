@@ -9,6 +9,7 @@ import { ALL_GENRES_DEDUPED } from '@/data/genres'
 import { Avatar, Button, Card, Input } from '@/components/ui'
 import { StatCard } from '@/components/stats/StatCard'
 import { MediaRail } from '@/components/media/MediaRail'
+import { ProfileNotes } from '@/components/profile/ProfileNotes'
 import { cn } from '@/utils/cn'
 import type { MediaSummary } from '@/types/media'
 
@@ -138,6 +139,8 @@ export function ProfilePage() {
       </section>
 
       <MediaRail title="Favori Yapımların" items={favoriteTitles} />
+
+      <ProfileNotes />
     </div>
   )
 }

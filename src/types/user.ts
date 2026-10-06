@@ -1,9 +1,18 @@
+export interface ProfileNote {
+  id: string
+  text: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface UserProfile {
   displayName: string
   avatarEmoji: string
   joinedAt: string
   favoriteGenreIds: number[]
   favoriteMediaIds: string[]
+  /** Free-form personal notes. Optional: profiles saved before notes existed lack it. */
+  notes?: ProfileNote[]
 }
 
 export type ThemePreference = 'dark' | 'light' | 'system'
