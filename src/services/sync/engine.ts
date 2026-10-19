@@ -1,5 +1,5 @@
 import * as drive from './drive'
-import { decodeSnapshot, encodeSnapshot } from './codec'
+import { decodeSnapshot, encodeSnapshot, SnapshotFormatError } from './codec'
 import {
   getLastStamp,
   getLocalMax,
@@ -20,10 +20,11 @@ import {
   hasScope,
   invalidateToken,
   isGoogleConfigured,
+  normalizeEmail,
   SCOPE_FILE,
   shouldRenewSilently,
 } from '@/services/auth/google'
-import { useSyncStore, type SyncPhase } from '@/store/syncStore'
+import { useSyncStore, type SyncPhase, type SyncProblem } from '@/store/syncStore'
 import { hydrateAllStores } from '@/store/init'
 import { parseImportBundle } from '@/utils/exportImport'
 import { ROUTES } from '@/utils/routes'
@@ -47,9 +48,11 @@ const CHANGE_DEBOUNCE_MS = 1500
  * metadata request (a few hundred bytes) when nothing changed. */
 const POLL_MS = 15_000
 const FOCUS_MIN_GAP_MS = 10_000
-/** Back after this long with an expired token: renew it right away, the
- * same way a fresh page load would. */
-const LONG_AWAY_MS = 10 * 60_000
+/** After a failed attempt, background syncs wait this long before trying
+ * again (growing with each failure in a row); a tap on the sync chip always
+ * goes right away. Keeps a full Drive or a Google outage from being hammered
+ * every 15 seconds, while still recovering by itself once it clears. */
+const RETRY_BACKOFF_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 300_000]
 
 let running: Promise<void> | null = null
 let rerun = false
@@ -57,6 +60,8 @@ let rerunManual = false
 let changeCounter = 0
 let lastAttemptAt = 0
 let debounceTimer: ReturnType<typeof setTimeout> | undefined
+let failuresInRow = 0
+let retryTimer: ReturnType<typeof setTimeout> | undefined
 
 function setPhase(phase: SyncPhase, extra: Partial<ReturnType<typeof useSyncStore.getState>> = {}): void {
   useSyncStore.setState({ phase, ...extra })
@@ -109,7 +114,7 @@ async function rehydrate(): Promise<void> {
 }
 
 async function upload(token: string, state: SyncState, fileId: string | null): Promise<drive.RemoteFile> {
-  const { snapshot, builtUpTo } = await storage.buildSnapshot(state.epoch!)
+  const { snapshot, builtUpTo } = await storage.buildSnapshot(state.epoch!, state.reset)
   const bytes = await encodeSnapshot(snapshot)
   const written = fileId ? await drive.updateSyncFile(token, fileId, bytes) : await drive.createSyncFile(token, bytes)
   state.fileId = written.id
@@ -120,6 +125,24 @@ async function upload(token: string, state: SyncState, fileId: string | null): P
 
 async function download(token: string, fileId: string): Promise<SyncSnapshot> {
   return decodeSnapshot(await drive.downloadFile(token, fileId))
+}
+
+/**
+ * Downloads a sync file; if it turns out to be unreadable (corrupted, cut
+ * off mid-write), renames it out of the way and returns null instead of
+ * failing every sync from now on. Renamed, not deleted: whatever is in it
+ * stays recoverable. Problems waiting can fix (a newer app version, an old
+ * browser) still throw.
+ */
+async function readOrQuarantine(token: string, fileId: string): Promise<SyncSnapshot | null> {
+  try {
+    return await download(token, fileId)
+  } catch (error) {
+    if (!(error instanceof SnapshotFormatError) || error.problem !== 'unreadable') throw error
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    await drive.renameFile(token, fileId, `${drive.SYNC_FILE_NAME}-unreadable-${stamp}`)
+    return null
+  }
 }
 
 /** Merges the previous design's `movie-tracker-backup.json`, if there is
@@ -147,6 +170,7 @@ async function settleCreationRace(token: string, state: SyncState, created: driv
   const remote = await download(token, canonical.id)
   const result = await storage.applyRemoteSnapshot(remote)
   state.epoch = remote.epoch
+  state.reset = remote.reset
   await upload(token, state, canonical.id)
   await drive.deleteFile(token, created.id).catch(() => {})
   return result.changed
@@ -154,7 +178,8 @@ async function settleCreationRace(token: string, state: SyncState, created: driv
 
 async function syncWithDrive(token: string, email: string, transferring: () => void): Promise<SyncState> {
   const stored = await storage.getSyncState()
-  const state: SyncState = stored?.account === email ? { ...stored } : { account: email, syncedUpTo: 0 }
+  const state: SyncState =
+    stored && normalizeEmail(stored.account) === normalizeEmail(email) ? { ...stored } : { account: email, syncedUpTo: 0 }
   let changed = false
   let needUpload = false
 
@@ -165,9 +190,26 @@ async function syncWithDrive(token: string, email: string, transferring: () => v
     // Leftovers from an interrupted creation race - fold them in.
     for (const extra of files.slice(1)) {
       transferring()
-      changed = (await storage.applyRemoteSnapshot(await download(token, extra.id))).changed || changed
-      await drive.deleteFile(token, extra.id).catch(() => {})
+      const snapshot = await readOrQuarantine(token, extra.id)
+      if (snapshot) {
+        changed = (await storage.applyRemoteSnapshot(snapshot)).changed || changed
+        await drive.deleteFile(token, extra.id).catch(() => {})
+      }
       needUpload = true
+    }
+  }
+
+  let remote: SyncSnapshot | null = null
+  if (file && (file.id !== state.fileId || file.version !== state.remoteVersion)) {
+    transferring()
+    remote = await readOrQuarantine(token, file.id)
+    // Unreadable and moved aside: carry on as if Drive had nothing, so
+    // this device's copy becomes the account's copy again.
+    if (!remote) {
+      file = null
+      state.fileId = undefined
+      state.remoteVersion = undefined
+      state.legacyChecked = true
     }
   }
 
@@ -180,18 +222,19 @@ async function syncWithDrive(token: string, email: string, transferring: () => v
       state.legacyChecked = true
     }
     needUpload = true
-  } else if (file.id !== state.fileId || file.version !== state.remoteVersion) {
-    transferring()
-    const remote = await download(token, file.id)
-    // A different epoch than the one this device last synced under means
-    // the account's data was deleted from another device - drop ours
-    // instead of uploading it back. (A device joining for the first time
-    // has no epoch yet and merges normally.)
-    const epochChanged = Boolean(state.epoch) && remote.epoch !== state.epoch
-    const result = await storage.applyRemoteSnapshot(remote, { replaceLocal: epochChanged })
+  } else if (remote) {
+    // A different epoch than the one this device last synced under, marked
+    // as a reset, means the account's data was deleted from another device
+    // - drop ours instead of uploading it back. Any other epoch change
+    // (Drive's file was lost and recreated) merges normally: losing data
+    // on a guess is far worse than a deletion having to be repeated. A
+    // device joining for the first time has no epoch yet and merges too.
+    const wipedElsewhere = Boolean(state.epoch) && remote.epoch !== state.epoch && remote.reset === true
+    const result = await storage.applyRemoteSnapshot(remote, { replaceLocal: wipedElsewhere })
     changed = result.changed || changed
     if (result.localAhead) needUpload = true
     state.epoch = remote.epoch
+    state.reset = remote.reset
     state.fileId = file.id
     state.remoteVersion = file.version
     state.legacyChecked = true
@@ -232,18 +275,67 @@ async function runOnce(manual: boolean): Promise<void> {
   if (manual) setPhase('syncing')
   try {
     const state = await syncWithDrive(token, account.email, () => setPhase('syncing'))
-    setPhase('idle', { error: null, lastSyncedAt: state.lastSyncedAt ?? null, dirty: getLocalMax() > state.syncedUpTo })
+    clearRetry()
+    setPhase('idle', {
+      error: null,
+      problem: null,
+      authFailure: null,
+      lastSyncedAt: state.lastSyncedAt ?? null,
+      dirty: getLocalMax() > state.syncedUpTo,
+    })
     tell({ type: 'synced' })
   } catch (error) {
+    console.error('Sync failed', error)
     if (error instanceof drive.DriveAuthError) {
-      invalidateToken()
+      invalidateToken({ scope: error.scope })
       setPhase('needsAuth')
     } else if (isNetworkError(error)) {
       setPhase('offline')
     } else {
-      setPhase('error', { error: error instanceof Error ? error.message : 'Eşitleme başarısız oldu.' })
+      const { problem, message } = describeFailure(error)
+      setPhase('error', { error: message, problem })
+      // Waiting can't fix these - only the user can (update the app or the
+      // browser); retrying would just repeat the same answer.
+      if (problem !== 'outdated' && problem !== 'unsupported') scheduleRetry()
     }
   }
+}
+
+function describeFailure(error: unknown): { problem: SyncProblem; message: string } {
+  if (error instanceof drive.DriveError) return { problem: error.kind, message: error.message }
+  if (error instanceof SnapshotFormatError) {
+    return { problem: error.problem === 'newer' ? 'outdated' : 'unsupported', message: error.message }
+  }
+  if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+    return { problem: 'unknown', message: 'Bu cihazın depolama alanı dolu, Drive’dan gelen veriler kaydedilemedi.' }
+  }
+  const detail = error instanceof Error && error.message ? ` (${error.message})` : ''
+  return { problem: 'unknown', message: `Eşitleme beklenmedik bir hatayla durdu${detail}. Kendiliğinden tekrar denenecek.` }
+}
+
+function scheduleRetry(): void {
+  const delay = RETRY_BACKOFF_MS[Math.min(failuresInRow, RETRY_BACKOFF_MS.length - 1)]
+  failuresInRow++
+  clearTimeout(retryTimer)
+  retryTimer = setTimeout(() => void syncNow(), delay)
+  useSyncStore.setState({ retryAt: Date.now() + delay })
+}
+
+function clearRetry(): void {
+  failuresInRow = 0
+  clearTimeout(retryTimer)
+  useSyncStore.setState({ retryAt: null })
+}
+
+/** Background triggers (polling, focus, edits) hold off while a failure's
+ * retry delay is running - the scheduled retry covers them. */
+function inBackoff(): boolean {
+  const retryAt = useSyncStore.getState().retryAt
+  return retryAt !== null && Date.now() < retryAt
+}
+
+function backgroundSync(): void {
+  if (!inBackoff()) void syncNow()
 }
 
 /** Runs a sync now, or - if one is already running - once more right after
@@ -277,39 +369,42 @@ function isSafeToLeavePage(): boolean {
 
 /** Starts background sync for the linked account. Returns a stop function. */
 export function startSync(): () => void {
-  let hiddenAt = 0
-
   const offChange = onLocalChange(() => {
     changeCounter++
     tellChanged()
     useSyncStore.setState({ dirty: true })
     clearTimeout(debounceTimer)
-    debounceTimer = setTimeout(() => void syncNow(), CHANGE_DEBOUNCE_MS)
+    debounceTimer = setTimeout(backgroundSync, CHANGE_DEBOUNCE_MS)
   })
 
   const onVisibility = () => {
     if (document.visibilityState === 'hidden') {
-      hiddenAt = Date.now()
       // Leaving the app (or the phone locking) - push pending edits now
       // rather than when the debounce would have fired.
       if (useSyncStore.getState().dirty) {
         clearTimeout(debounceTimer)
-        void syncNow()
+        backgroundSync()
       }
       return
     }
-    if (hiddenAt && Date.now() - hiddenAt > LONG_AWAY_MS && shouldRenewSilently() && isSafeToLeavePage()) {
-      beginSignIn({ silent: true })
+    // Back with an expired token: renew it right away, the same way a
+    // fresh page load would, unless that would throw away something on
+    // screen (an open dialog, a half-typed note).
+    if (shouldRenewSilently() && isSafeToLeavePage()) {
+      void writesSettled().then(() => beginSignIn({ silent: true }))
       return
     }
-    if (Date.now() - lastAttemptAt > FOCUS_MIN_GAP_MS) void syncNow()
+    if (Date.now() - lastAttemptAt > FOCUS_MIN_GAP_MS) backgroundSync()
   }
-  const onOnline = () => void syncNow()
+  const onOnline = () => {
+    clearRetry()
+    void syncNow()
+  }
   const onOffline = () => setPhase('offline')
   // Switching back to this window without the tab ever being hidden
   // (another window on top, side-by-side apps).
   const onFocus = () => {
-    if (Date.now() - lastAttemptAt > FOCUS_MIN_GAP_MS) void syncNow()
+    if (Date.now() - lastAttemptAt > FOCUS_MIN_GAP_MS) backgroundSync()
   }
   const onTabMessage = (event: MessageEvent<TabMessage>) => {
     const message = event.data
@@ -321,6 +416,7 @@ export function startSync(): () => void {
         useSyncStore.setState({
           phase: 'idle',
           error: null,
+          problem: null,
           lastSyncedAt: state?.lastSyncedAt ?? null,
           dirty: getLocalMax() > (state?.syncedUpTo ?? 0),
         }),
@@ -336,7 +432,7 @@ export function startSync(): () => void {
   window.addEventListener('focus', onFocus)
   channel?.addEventListener('message', onTabMessage)
   const poll = setInterval(() => {
-    if (document.visibilityState === 'visible') void syncNow()
+    if (document.visibilityState === 'visible') backgroundSync()
   }, POLL_MS)
 
   void (async () => {
@@ -351,6 +447,7 @@ export function startSync(): () => void {
   return () => {
     offChange()
     clearTimeout(debounceTimer)
+    clearTimeout(retryTimer)
     clearInterval(poll)
     document.removeEventListener('visibilitychange', onVisibility)
     window.removeEventListener('online', onOnline)
@@ -371,7 +468,33 @@ export async function hasSyncedBefore(): Promise<boolean> {
  * must not leak into this one. */
 export async function prepareDeviceForAccount(email: string): Promise<void> {
   const state = await storage.getSyncState()
-  if (state && state.account !== email) await storage.wipeLocal()
+  if (state && normalizeEmail(state.account) !== normalizeEmail(email)) await storage.wipeLocal()
+}
+
+/** Signs in again the way the last failure calls for: the account chooser
+ * if the wrong account was picked (Drive access is re-asked automatically
+ * when it was missing - see beginSignIn). */
+export function reconnectGoogle(): void {
+  beginSignIn({ selectAccount: useSyncStore.getState().authFailure?.reason === 'mismatch' })
+}
+
+/**
+ * The way out of a sync that seems stuck: forgets which Drive file and
+ * version this device last saw, so the next sync downloads the account's
+ * copy afresh, merges it record by record, and uploads the result. Nothing
+ * is deleted on either side - it's the same merge every sync does, just
+ * without trusting any remembered state.
+ */
+export async function repairSync(): Promise<void> {
+  if (running) await running.catch(() => {})
+  await withSyncLock(async () => {
+    const state = await storage.getSyncState()
+    if (state) {
+      await storage.putSyncState({ ...state, fileId: undefined, remoteVersion: undefined, syncedUpTo: 0 })
+    }
+  })
+  clearRetry()
+  await syncNow({ manual: true })
 }
 
 /** Tries to get pending edits onto Drive before the device is signed out.
@@ -417,12 +540,13 @@ export async function deleteAllData(): Promise<void> {
   // could otherwise upload the old data again straight after the wipe.
   await withSyncLock(() => wipeEverywhere(token, account.email))
   tellChanged()
-  setPhase('idle', { dirty: false, error: null, lastSyncedAt: Date.now() })
+  clearRetry()
+  setPhase('idle', { dirty: false, error: null, problem: null, lastSyncedAt: Date.now() })
 }
 
 async function wipeEverywhere(token: string, email: string): Promise<void> {
   const epoch = newEpoch()
-  const empty: SyncSnapshot = { app: 'movie-tracker', schema: SNAPSHOT_SCHEMA, epoch, writtenAt: Date.now(), tables: {}, media: [] }
+  const empty: SyncSnapshot = { app: 'movie-tracker', schema: SNAPSHOT_SCHEMA, epoch, reset: true, writtenAt: Date.now(), tables: {}, media: [] }
   const bytes = await encodeSnapshot(empty)
   const stored = await storage.getSyncState()
   const existing = stored?.fileId ? await drive.getFile(token, stored.fileId) : ((await drive.listSyncFiles(token))[0] ?? null)
@@ -439,6 +563,7 @@ async function wipeEverywhere(token: string, email: string): Promise<void> {
     fileId: written.id,
     remoteVersion: written.version,
     epoch,
+    reset: true,
     syncedUpTo: getLocalMax(),
     lastSyncedAt: Date.now(),
     legacyChecked: true,

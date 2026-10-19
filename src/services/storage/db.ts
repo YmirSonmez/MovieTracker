@@ -62,6 +62,8 @@ export interface SyncState {
    * starts a new one, which tells every other device to drop its copy
    * instead of re-uploading it. */
   epoch?: string
+  /** The epoch was started by "delete all my data" (see SyncSnapshot.reset). */
+  reset?: true
   /** Every local edit stamped at or below this is already on Drive. */
   syncedUpTo: number
   lastSyncedAt?: number

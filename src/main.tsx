@@ -21,7 +21,7 @@ async function boot(): Promise<void> {
     return
   }
   if (result.kind === 'signedIn') await prepareDeviceForAccount(result.email)
-  if (result.kind === 'failed') useSyncStore.setState({ authFailure: { reason: result.reason, message: result.message, silent: result.silent } })
+  if (result.kind === 'failed') useSyncStore.setState({ authFailure: { reason: result.reason, message: result.message, silent: result.silent, email: result.email } })
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
