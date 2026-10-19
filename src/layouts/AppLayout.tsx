@@ -15,7 +15,7 @@ import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts'
 import { useScrollMemory } from '@/hooks/useScrollMemory'
 import { preloadPages } from '@/utils/lazyPage'
 import { getAccessToken, getAccount, isGoogleConfigured } from '@/services/auth/google'
-import { hasSyncedBefore, startSync, syncNow } from '@/services/sync/engine'
+import { hasSyncedBefore, reconnectGoogle, startSync, syncNow } from '@/services/sync/engine'
 import { warmQueryCache } from '@/services'
 import { ROUTES } from '@/utils/routes'
 
@@ -67,12 +67,18 @@ export function AppLayout() {
   }, [ready, theme])
 
   // A renewal the user started themselves (the "Yeniden bağlan" button)
-  // that didn't work. Silent renewals fail quietly: the sync chip says it.
+  // that didn't work - say why, with the way out right on the toast. The
+  // failure stays in the store so the sync panel can explain it too, until
+  // a sync succeeds. Silent renewals fail quietly: the sync chip says it.
   useEffect(() => {
     const failure = useSyncStore.getState().authFailure
     if (!failure || failure.silent || signedOut) return
-    useSyncStore.setState({ authFailure: null })
-    toast({ title: 'Google oturumu yenilenemedi', description: failure.message, variant: 'danger' })
+    toast({
+      title: 'Google oturumu yenilenemedi',
+      description: failure.message,
+      variant: 'danger',
+      action: { label: failure.reason === 'mismatch' ? 'Doğru hesabı seç' : 'Tekrar dene', onClick: reconnectGoogle },
+    })
   }, [signedOut])
 
   useGlobalShortcuts(() => setPaletteOpen(true))

@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { AlertTriangle, LogIn, LogOut, RefreshCw } from 'lucide-react'
+import { AlertTriangle, LogIn, LogOut, RefreshCw, Wrench } from 'lucide-react'
 import { Button, Modal } from '@/components/ui'
 import { SettingsRow, SettingsSection } from './SettingsRow'
 import { useNow } from '@/hooks/useNow'
 import { describeSync } from '@/utils/syncStatus'
 import { useSyncStore } from '@/store/syncStore'
-import { beginSignIn, getAccount, isGoogleConfigured } from '@/services/auth/google'
-import { flushPendingChanges, signOut, syncNow } from '@/services/sync/engine'
+import { getAccount, isGoogleConfigured } from '@/services/auth/google'
+import { flushPendingChanges, reconnectGoogle, repairSync, signOut, syncNow } from '@/services/sync/engine'
 import { publicUrl } from '@/utils/publicUrl'
 
 export function AccountSection() {
@@ -18,6 +18,7 @@ export function AccountSection() {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
   const [unsyncedWarning, setUnsyncedWarning] = useState(false)
+  const [repairing, setRepairing] = useState(false)
   const account = getAccount()
 
   if (!isGoogleConfigured() || !account) {
@@ -68,7 +69,7 @@ export function AccountSection() {
           title="Oturumu yenile"
           description="Değişikliklerin bu cihazda duruyor; oturum yenilenince Drive’a gönderilir."
           control={
-            <Button size="sm" onClick={() => beginSignIn()}>
+            <Button size="sm" onClick={reconnectGoogle}>
               <LogIn className="h-3.5 w-3.5" /> Yeniden bağlan
             </Button>
           }
@@ -80,6 +81,31 @@ export function AccountSection() {
           control={
             <Button size="sm" variant="outline" onClick={() => void syncNow({ manual: true })} disabled={phase === 'syncing' || phase === 'offline'}>
               <RefreshCw className={phase === 'syncing' ? 'h-3.5 w-3.5 motion-safe:animate-spin' : 'h-3.5 w-3.5'} /> Şimdi eşitle
+            </Button>
+          }
+        />
+      )}
+
+      {phase !== 'needsAuth' && (
+        <SettingsRow
+          title="Eşitlemeyi onar"
+          description="Eşitleme takılırsa: Drive’daki kopyanı baştan okuyup bu cihazdakiyle birleştirir. Hiçbir veri silinmez."
+          control={
+            <Button
+              size="sm"
+              variant="ghost"
+              loading={repairing}
+              disabled={repairing || phase === 'offline'}
+              onClick={async () => {
+                setRepairing(true)
+                try {
+                  await repairSync()
+                } finally {
+                  setRepairing(false)
+                }
+              }}
+            >
+              <Wrench className="h-3.5 w-3.5" /> Onar
             </Button>
           }
         />

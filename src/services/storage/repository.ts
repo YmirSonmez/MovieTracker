@@ -52,6 +52,11 @@ export interface SyncSnapshot {
   app: 'movie-tracker'
   schema: number
   epoch: string
+  /** Set when this epoch was started by "delete all my data" - the only
+   * case where another device should drop its copy instead of merging it.
+   * An epoch can also change for harmless reasons (Drive's file was lost
+   * and a device without history recreated it). */
+  reset?: true
   writtenAt: number
   tables: Partial<Record<SyncTable, SnapshotRecord[]>>
   /** TMDB metadata for everything the data above references, so a fresh
@@ -400,7 +405,7 @@ export const storage = {
    * lands mid-read is either included (harmless: uploaded twice) or stamped
    * above it (so the device stays dirty and uploads again), never lost.
    */
-  async buildSnapshot(epoch: string): Promise<{ snapshot: SyncSnapshot; builtUpTo: number }> {
+  async buildSnapshot(epoch: string, reset?: boolean): Promise<{ snapshot: SyncSnapshot; builtUpTo: number }> {
     const builtUpTo = localMax
     const db = await getDB()
     const tx = db.transaction([...ALL_DATA_STORES], 'readonly')
@@ -436,7 +441,7 @@ export const storage = {
     await tx.done
 
     return {
-      snapshot: { app: 'movie-tracker', schema: SNAPSHOT_SCHEMA, epoch, writtenAt: Date.now(), tables, media },
+      snapshot: { app: 'movie-tracker', schema: SNAPSHOT_SCHEMA, epoch, ...(reset ? { reset: true } : {}), writtenAt: Date.now(), tables, media },
       builtUpTo,
     }
   },

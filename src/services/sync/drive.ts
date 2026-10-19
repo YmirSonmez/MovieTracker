@@ -16,21 +16,73 @@ export interface RemoteFile {
   createdTime?: string
 }
 
-/** The token was rejected - it needs renewing, not retrying. */
-export class DriveAuthError extends Error {}
-export class DriveError extends Error {}
+/** The token was rejected - it needs renewing, not retrying. `scope`: it
+ * is valid but lacks Drive access, so a plain renewal would just hand back
+ * the same grant - the consent screen has to be shown again. */
+export class DriveAuthError extends Error {
+  constructor(
+    message: string,
+    readonly scope = false,
+  ) {
+    super(message)
+  }
+}
+
+/**
+ * - storageFull: the account's Drive is out of space (appDataFolder counts
+ *   toward the quota) - nothing the app can do until the user frees some.
+ * - apiDisabled: the app's Google Cloud project has Drive switched off.
+ * - transient: rate limits, Google-side errors - retrying later works.
+ */
+export type DriveErrorKind = 'storageFull' | 'apiDisabled' | 'transient'
+
+export class DriveError extends Error {
+  constructor(
+    message: string,
+    readonly kind: DriveErrorKind = 'transient',
+  ) {
+    super(message)
+  }
+}
+
+/** Google's error body carries a machine-readable reason
+ * (`error.errors[].reason`, `error.status`, `error.details[].reason`) - the
+ * HTTP status alone can't tell "Drive is full" from "slow down". */
+async function failureFor(res: Response): Promise<Error> {
+  const text = await res.text().catch(() => '')
+  let reasons = ''
+  try {
+    const body = JSON.parse(text) as {
+      error?: { status?: string; errors?: Array<{ reason?: string }>; details?: Array<{ reason?: string }> }
+    }
+    reasons = [body.error?.status, ...(body.error?.errors ?? []).map((e) => e.reason), ...(body.error?.details ?? []).map((d) => d.reason)]
+      .filter(Boolean)
+      .join(' ')
+  } catch {
+    // Not JSON (a proxy's HTML page) - fall back to the raw text below.
+  }
+  const haystack = `${reasons} ${text}`
+
+  if (res.status === 401) return new DriveAuthError('Google oturumunun süresi doldu.')
+  if (/storageQuotaExceeded/i.test(haystack)) {
+    return new DriveError('Google Drive depolama alanın dolu. Biraz yer açtığında eşitleme kendiliğinden devam eder.', 'storageFull')
+  }
+  if (/accessNotConfigured|SERVICE_DISABLED/i.test(haystack)) {
+    return new DriveError('Uygulamanın Google Drive erişimi şu an kapalı. Uygulama yöneticisinin Drive API’yi açması gerekiyor.', 'apiDisabled')
+  }
+  if (res.status === 429 || /rateLimitExceeded|RESOURCE_EXHAUSTED/i.test(haystack)) {
+    return new DriveError('Google Drive şu an çok yoğun, biraz sonra kendiliğinden tekrar denenecek.')
+  }
+  if (res.status === 403 && /insufficientPermissions|ACCESS_TOKEN_SCOPE_INSUFFICIENT|insufficient.*scope/i.test(haystack)) {
+    return new DriveAuthError('Google Drive izni eksik.', true)
+  }
+  if (res.status >= 500) return new DriveError('Google Drive geçici bir sorun yaşıyor, biraz sonra kendiliğinden tekrar denenecek.')
+  return new DriveError(`Google Drive isteği kabul etmedi (${res.status}). Biraz sonra kendiliğinden tekrar denenecek.`)
+}
 
 async function call(token: string, url: string, init: RequestInit = {}): Promise<Response> {
   const res = await fetch(url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } })
-  if (res.status === 401) throw new DriveAuthError('Google oturumunun süresi doldu.')
-  if (res.status === 403) {
-    const body = await res.text().catch(() => '')
-    if (/insufficient|scope|permission/i.test(body) && !/rate|quota/i.test(body)) {
-      throw new DriveAuthError('Google Drive izni eksik.')
-    }
-    throw new DriveError('Google Drive şu an isteği kabul etmedi, biraz sonra tekrar denenecek.')
-  }
-  if (!res.ok && res.status !== 404) throw new DriveError(`Google Drive isteği başarısız oldu (${res.status}).`)
+  if (!res.ok && res.status !== 404) throw await failureFor(res)
   return res
 }
 
@@ -89,6 +141,17 @@ export async function updateSyncFile(token: string, id: string, bytes: Uint8Arra
   })
   if (res.status === 404) throw new DriveError('Drive’daki veri dosyası bulunamadı.')
   return (await res.json()) as RemoteFile
+}
+
+/** Moves a file out of the way without destroying it: a sync file this
+ * version can't read is renamed, so a fresh one can take its name while the
+ * original stays recoverable. */
+export async function renameFile(token: string, id: string, name: string): Promise<void> {
+  await call(token, `${FILES_URL}/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+    body: JSON.stringify({ name }),
+  })
 }
 
 export async function deleteFile(token: string, id: string): Promise<void> {

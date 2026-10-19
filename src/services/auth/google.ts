@@ -30,6 +30,10 @@ const ACCOUNT_KEY = 'movie-tracker-account'
 const TOKEN_KEY = 'movie-tracker-token'
 const PENDING_KEY = 'movie-tracker-auth-pending'
 const SILENT_ATTEMPT_KEY = 'movie-tracker-auth-silent-at'
+/** Set when Google handed back a token without Drive access: the next
+ * interactive sign-in must show the consent screen again, or Google just
+ * repeats the same incomplete grant without asking. */
+const CONSENT_KEY = 'movie-tracker-auth-needs-consent'
 /** Leftovers from the previous design - removed on sight. */
 const LEGACY_KEYS = ['movie-tracker-drive-token', 'movie-tracker-device-id', 'movie-tracker-demo-loaded']
 
@@ -59,13 +63,18 @@ interface PendingSignIn {
   at: number
 }
 
+/** Keyed by `state`: two tabs renewing at the same moment each find their
+ * own entry when Google sends them back, instead of the second overwriting
+ * the first and both failing verification. */
+type PendingSignIns = Record<string, PendingSignIn>
+
 export type AuthFailureReason = 'denied' | 'interaction' | 'scope' | 'mismatch' | 'network' | 'invalid'
 
 export type AuthRedirectResult =
   | { kind: 'none' }
   | { kind: 'signedIn'; email: string }
   | { kind: 'renewed'; email: string }
-  | { kind: 'failed'; silent: boolean; reason: AuthFailureReason; message: string }
+  | { kind: 'failed'; silent: boolean; reason: AuthFailureReason; message: string; email?: string }
 
 function clientId(): string {
   return (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim()
@@ -94,6 +103,10 @@ function write(key: string, value: unknown): void {
   }
 }
 
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
+
 export function getAccount(): Account | null {
   const account = read<Account>(ACCOUNT_KEY)
   return account && typeof account.email === 'string' ? account : null
@@ -120,9 +133,11 @@ export function hasScope(scope: string): boolean {
   return getStoredToken()?.scopes.includes(scope) ?? false
 }
 
-/** Drive said the token is no good (revoked, or expired early). */
-export function invalidateToken(): void {
+/** Drive said the token is no good (revoked, or expired early). `scope`:
+ * it lacks Drive access, so the next sign-in has to ask for it again. */
+export function invalidateToken(options: { scope?: boolean } = {}): void {
   write(TOKEN_KEY, null)
+  if (options.scope) write(CONSENT_KEY, true)
 }
 
 /** The exact redirect URI registered in Google Cloud Console - the app's
@@ -137,15 +152,36 @@ export function currentRoute(): string {
   return hash.startsWith('/') ? hash : '/'
 }
 
+function readPending(): PendingSignIns {
+  const stored = read<PendingSignIns | PendingSignIn>(PENDING_KEY)
+  // A single entry is the previous version's format - a sign-in started
+  // right before an update still completes.
+  if (stored && typeof (stored as PendingSignIn).state === 'string') {
+    const single = stored as PendingSignIn
+    return { [single.state]: single }
+  }
+  const pending = (stored ?? {}) as PendingSignIns
+  for (const [key, entry] of Object.entries(pending)) {
+    if (!entry || Date.now() - entry.at > PENDING_TTL_MS) delete pending[key]
+  }
+  return pending
+}
+
 /**
  * Leaves the page for Google's sign-in. `silent` never shows anything:
  * Google either redirects straight back with a token or with an error.
+ * `selectAccount` shows the account chooser even when the device already
+ * knows which account it belongs to - for when the wrong one was picked.
  */
-export function beginSignIn(options: { silent?: boolean; returnTo?: string; forceConsent?: boolean } = {}): void {
+export function beginSignIn(
+  options: { silent?: boolean; returnTo?: string; forceConsent?: boolean; selectAccount?: boolean } = {},
+): void {
   const state = crypto.randomUUID()
-  const pending: PendingSignIn = { state, returnTo: options.returnTo ?? currentRoute(), silent: Boolean(options.silent), at: Date.now() }
+  const pending = readPending()
+  pending[state] = { state, returnTo: options.returnTo ?? currentRoute(), silent: Boolean(options.silent), at: Date.now() }
   write(PENDING_KEY, pending)
   if (options.silent) write(SILENT_ATTEMPT_KEY, Date.now())
+  const forceConsent = options.forceConsent || Boolean(read<boolean>(CONSENT_KEY))
 
   const params = new URLSearchParams({
     client_id: clientId(),
@@ -158,8 +194,8 @@ export function beginSignIn(options: { silent?: boolean; returnTo?: string; forc
   const account = getAccount()
   if (account) params.set('login_hint', account.email)
   if (options.silent) params.set('prompt', 'none')
-  else if (options.forceConsent) params.set('prompt', 'consent')
-  else if (!account) params.set('prompt', 'select_account')
+  else if (forceConsent) params.set('prompt', options.selectAccount || !account ? 'select_account consent' : 'consent')
+  else if (options.selectAccount || !account) params.set('prompt', 'select_account')
   window.location.assign(`${AUTH_ENDPOINT}?${params.toString()}`)
 }
 
@@ -175,8 +211,8 @@ export function shouldRenewSilently(): boolean {
 
 const SILENT_FAILURES = new Set(['interaction_required', 'login_required', 'consent_required', 'account_selection_required'])
 
-function failed(silent: boolean, reason: AuthFailureReason, message: string): AuthRedirectResult {
-  return { kind: 'failed', silent, reason, message }
+function failed(silent: boolean, reason: AuthFailureReason, message: string, email?: string): AuthRedirectResult {
+  return { kind: 'failed', silent, reason, message, email }
 }
 
 /**
@@ -192,15 +228,17 @@ export async function consumeAuthRedirect(): Promise<AuthRedirectResult> {
   if (!/(^|&)(access_token|error)=/.test(fragment)) return { kind: 'none' }
 
   const params = new URLSearchParams(fragment)
-  const pending = read<PendingSignIn>(PENDING_KEY)
-  write(PENDING_KEY, null)
-  const returnTo = pending && Date.now() - pending.at < PENDING_TTL_MS ? pending.returnTo : '/'
-  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${returnTo}`)
+  const pendingAll = readPending()
+  const pending = pendingAll[params.get('state') ?? '']
+  if (pending) delete pendingAll[pending.state]
+  write(PENDING_KEY, Object.keys(pendingAll).length > 0 ? pendingAll : null)
+  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${pending?.returnTo ?? '/'}`)
 
-  const silent = pending?.silent ?? false
-  if (!pending || params.get('state') !== pending.state) {
-    return failed(silent, 'invalid', 'Giriş yanıtı doğrulanamadı. Lütfen tekrar dene.')
-  }
+  // No matching entry: an answer to a sign-in this browser didn't start,
+  // or one that sat around too long. Treated as silent - there's nothing
+  // the user did wrong, and the sync chip still offers to sign in.
+  if (!pending) return failed(true, 'invalid', 'Giriş yanıtı doğrulanamadı. Lütfen tekrar dene.')
+  const silent = pending.silent
 
   const error = params.get('error')
   if (error) {
@@ -230,24 +268,28 @@ export async function consumeAuthRedirect(): Promise<AuthRedirectResult> {
   }
   const scopes = (info.scope ?? '').split(' ').filter(Boolean)
   if (!scopes.includes(SCOPE_APPDATA)) {
+    write(CONSENT_KEY, true)
     return failed(silent, 'scope', 'Verilerini Drive’da tutabilmek için izin ekranındaki Google Drive kutusunu işaretlemen gerekiyor.')
   }
 
+  const email = normalizeEmail(info.email)
   const account = getAccount()
-  if (account && account.email !== info.email) {
+  if (account && normalizeEmail(account.email) !== email) {
     return failed(
       silent,
       'mismatch',
-      `Bu cihaz ${account.email} hesabına bağlı. Başka bir hesap kullanmak için önce Ayarlar’dan çıkış yap.`,
+      `Bu cihaz ${account.email} hesabına bağlı, ama Google’da ${info.email} seçildi. ${account.email} ile tekrar dene ya da başka bir hesaba geçmek için Ayarlar’dan çıkış yap.`,
+      info.email,
     )
   }
 
   const expiresIn = Number(info.expires_in ?? params.get('expires_in') ?? 3600)
   write(TOKEN_KEY, { accessToken, expiresAt: Date.now() + expiresIn * 1000, scopes } satisfies StoredToken)
   write(SILENT_ATTEMPT_KEY, null)
-  if (account) return { kind: 'renewed', email: info.email }
-  write(ACCOUNT_KEY, { email: info.email } satisfies Account)
-  return { kind: 'signedIn', email: info.email }
+  write(CONSENT_KEY, null)
+  if (account) return { kind: 'renewed', email: account.email }
+  write(ACCOUNT_KEY, { email } satisfies Account)
+  return { kind: 'signedIn', email }
 }
 
 /** Forgets the account on this device. Deliberately does not revoke the
@@ -257,4 +299,5 @@ export function forgetAccount(): void {
   write(ACCOUNT_KEY, null)
   write(PENDING_KEY, null)
   write(SILENT_ATTEMPT_KEY, null)
+  write(CONSENT_KEY, null)
 }
