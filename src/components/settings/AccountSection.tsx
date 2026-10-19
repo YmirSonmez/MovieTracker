@@ -86,6 +86,18 @@ export function AccountSection() {
         />
       )}
 
+      {phase === 'error' && (
+        <SettingsRow
+          title="Google ile yeniden bağlan"
+          description="Drive bağlantıyı reddediyorsa: Google izinlerini baştan alır. Verilerin bu cihazda durur."
+          control={
+            <Button size="sm" onClick={reconnectGoogle}>
+              <LogIn className="h-3.5 w-3.5" /> Yeniden bağlan
+            </Button>
+          }
+        />
+      )}
+
       {phase !== 'needsAuth' && (
         <SettingsRow
           title="Eşitlemeyi onar"

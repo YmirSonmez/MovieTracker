@@ -15,10 +15,11 @@ export type SyncPhase = 'disabled' | 'idle' | 'syncing' | 'offline' | 'needsAuth
  * - transient: Google-side trouble or rate limits; retried on its own
  * - storageFull: the user's Drive is full
  * - apiDisabled: the app's Google project has Drive turned off
+ * - forbidden: Drive refused the account - reconnecting is the likely fix
  * - outdated: Drive's copy was written by a newer version of the app
  * - unsupported: this browser can't read Drive's copy
  * - unknown: anything else (a storage failure on this device, a bug) */
-export type SyncProblem = 'transient' | 'storageFull' | 'apiDisabled' | 'outdated' | 'unsupported' | 'unknown'
+export type SyncProblem = 'transient' | 'storageFull' | 'apiDisabled' | 'forbidden' | 'outdated' | 'unsupported' | 'unknown'
 
 interface SyncStoreState {
   phase: SyncPhase
@@ -27,6 +28,8 @@ interface SyncStoreState {
   lastSyncedAt: number | null
   error: string | null
   problem: SyncProblem | null
+  /** Google's raw status/reason for the error, for the technical line. */
+  errorDetail: string | null
   /** When the next automatic attempt after a failure is due. */
   retryAt: number | null
   /** The last sign-in redirect's failure, for the screen that started it. */
@@ -40,6 +43,7 @@ export const useSyncStore = create<SyncStoreState>(() => ({
   lastSyncedAt: null,
   error: null,
   problem: null,
+  errorDetail: null,
   retryAt: null,
   authFailure: null,
 }))
