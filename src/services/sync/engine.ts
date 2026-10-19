@@ -279,6 +279,7 @@ async function runOnce(manual: boolean): Promise<void> {
     setPhase('idle', {
       error: null,
       problem: null,
+      errorDetail: null,
       authFailure: null,
       lastSyncedAt: state.lastSyncedAt ?? null,
       dirty: getLocalMax() > state.syncedUpTo,
@@ -293,7 +294,8 @@ async function runOnce(manual: boolean): Promise<void> {
       setPhase('offline')
     } else {
       const { problem, message } = describeFailure(error)
-      setPhase('error', { error: message, problem })
+      const errorDetail = error instanceof drive.DriveError ? (error.detail ?? null) : null
+      setPhase('error', { error: message, problem, errorDetail })
       // Waiting can't fix these - only the user can (update the app or the
       // browser); retrying would just repeat the same answer.
       if (problem !== 'outdated' && problem !== 'unsupported') scheduleRetry()
@@ -417,6 +419,7 @@ export function startSync(): () => void {
           phase: 'idle',
           error: null,
           problem: null,
+          errorDetail: null,
           lastSyncedAt: state?.lastSyncedAt ?? null,
           dirty: getLocalMax() > (state?.syncedUpTo ?? 0),
         }),
@@ -472,10 +475,13 @@ export async function prepareDeviceForAccount(email: string): Promise<void> {
 }
 
 /** Signs in again the way the last failure calls for: the account chooser
- * if the wrong account was picked (Drive access is re-asked automatically
- * when it was missing - see beginSignIn). */
+ * if the wrong account was picked, and the consent screen if Drive turned
+ * the account away - a fresh grant is what fixes most refusals (Drive
+ * access is also re-asked automatically when it was missing - see
+ * beginSignIn). */
 export function reconnectGoogle(): void {
-  beginSignIn({ selectAccount: useSyncStore.getState().authFailure?.reason === 'mismatch' })
+  const { authFailure, phase } = useSyncStore.getState()
+  beginSignIn({ selectAccount: authFailure?.reason === 'mismatch', forceConsent: phase === 'error' })
 }
 
 /**
@@ -541,7 +547,7 @@ export async function deleteAllData(): Promise<void> {
   await withSyncLock(() => wipeEverywhere(token, account.email))
   tellChanged()
   clearRetry()
-  setPhase('idle', { dirty: false, error: null, problem: null, lastSyncedAt: Date.now() })
+  setPhase('idle', { dirty: false, error: null, problem: null, errorDetail: null, lastSyncedAt: Date.now() })
 }
 
 async function wipeEverywhere(token: string, email: string): Promise<void> {

@@ -32,14 +32,19 @@ export class DriveAuthError extends Error {
  * - storageFull: the account's Drive is out of space (appDataFolder counts
  *   toward the quota) - nothing the app can do until the user frees some.
  * - apiDisabled: the app's Google Cloud project has Drive switched off.
+ * - forbidden: Drive refused this account for a reason not recognised
+ *   below - a fresh sign-in is the likeliest fix, so the UI leads with it.
  * - transient: rate limits, Google-side errors - retrying later works.
  */
-export type DriveErrorKind = 'storageFull' | 'apiDisabled' | 'transient'
+export type DriveErrorKind = 'storageFull' | 'apiDisabled' | 'forbidden' | 'transient'
 
 export class DriveError extends Error {
   constructor(
     message: string,
     readonly kind: DriveErrorKind = 'transient',
+    /** Google's own status, reason codes and message - shown as a small
+     * technical line so an unrecognised failure can still be diagnosed. */
+    readonly detail?: string,
   ) {
     super(message)
   }
@@ -51,33 +56,41 @@ export class DriveError extends Error {
 async function failureFor(res: Response): Promise<Error> {
   const text = await res.text().catch(() => '')
   let reasons = ''
+  let googleMessage = ''
   try {
     const body = JSON.parse(text) as {
-      error?: { status?: string; errors?: Array<{ reason?: string }>; details?: Array<{ reason?: string }> }
+      error?: { message?: string; status?: string; errors?: Array<{ reason?: string }>; details?: Array<{ reason?: string }> }
     }
     reasons = [body.error?.status, ...(body.error?.errors ?? []).map((e) => e.reason), ...(body.error?.details ?? []).map((d) => d.reason)]
       .filter(Boolean)
       .join(' ')
+    googleMessage = body.error?.message ?? ''
   } catch {
     // Not JSON (a proxy's HTML page) - fall back to the raw text below.
   }
   const haystack = `${reasons} ${text}`
+  const detail = [`HTTP ${res.status}`, reasons, googleMessage].filter(Boolean).join(' · ').slice(0, 300)
 
   if (res.status === 401) return new DriveAuthError('Google oturumunun süresi doldu.')
   if (/storageQuotaExceeded/i.test(haystack)) {
-    return new DriveError('Google Drive depolama alanın dolu. Biraz yer açtığında eşitleme kendiliğinden devam eder.', 'storageFull')
+    return new DriveError('Google Drive depolama alanın dolu. Biraz yer açtığında eşitleme kendiliğinden devam eder.', 'storageFull', detail)
   }
   if (/accessNotConfigured|SERVICE_DISABLED/i.test(haystack)) {
-    return new DriveError('Uygulamanın Google Drive erişimi şu an kapalı. Uygulama yöneticisinin Drive API’yi açması gerekiyor.', 'apiDisabled')
+    return new DriveError('Uygulamanın Google Drive erişimi şu an kapalı. Uygulama yöneticisinin Drive API’yi açması gerekiyor.', 'apiDisabled', detail)
   }
   if (res.status === 429 || /rateLimitExceeded|RESOURCE_EXHAUSTED/i.test(haystack)) {
-    return new DriveError('Google Drive şu an çok yoğun, biraz sonra kendiliğinden tekrar denenecek.')
+    return new DriveError('Google Drive şu an çok yoğun, biraz sonra kendiliğinden tekrar denenecek.', 'transient', detail)
   }
   if (res.status === 403 && /insufficientPermissions|ACCESS_TOKEN_SCOPE_INSUFFICIENT|insufficient.*scope/i.test(haystack)) {
     return new DriveAuthError('Google Drive izni eksik.', true)
   }
-  if (res.status >= 500) return new DriveError('Google Drive geçici bir sorun yaşıyor, biraz sonra kendiliğinden tekrar denenecek.')
-  return new DriveError(`Google Drive isteği kabul etmedi (${res.status}). Biraz sonra kendiliğinden tekrar denenecek.`)
+  if (res.status >= 500) {
+    return new DriveError('Google Drive geçici bir sorun yaşıyor, biraz sonra kendiliğinden tekrar denenecek.', 'transient', detail)
+  }
+  if (res.status === 403) {
+    return new DriveError('Google Drive bu hesabın erişimini reddetti. Google ile yeniden bağlanmak genellikle düzeltir.', 'forbidden', detail)
+  }
+  return new DriveError(`Google Drive isteği kabul etmedi (${res.status}). Biraz sonra kendiliğinden tekrar denenecek.`, 'transient', detail)
 }
 
 async function call(token: string, url: string, init: RequestInit = {}): Promise<Response> {

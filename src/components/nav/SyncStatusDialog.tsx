@@ -27,6 +27,7 @@ export function SyncStatusDialog({ open, onOpenChange }: { open: boolean; onOpen
   const dirty = useSyncStore((s) => s.dirty)
   const lastSyncedAt = useSyncStore((s) => s.lastSyncedAt)
   const retryAt = useSyncStore((s) => s.retryAt)
+  const errorDetail = useSyncStore((s) => s.errorDetail)
   const authFailure = useSyncStore((s) => s.authFailure)
   const now = useNow(1000)
   const [busy, setBusy] = useState<'retry' | 'repair' | 'update' | null>(null)
@@ -75,6 +76,9 @@ export function SyncStatusDialog({ open, onOpenChange }: { open: boolean; onOpen
           <span>
             {message}
             {retry && <span className="mt-1 block text-text-muted">{retry}</span>}
+            {phase === 'error' && errorDetail && (
+              <span className="mt-1 block break-words font-mono text-xs text-text-subtle">{errorDetail}</span>
+            )}
           </span>
         </p>
 
@@ -88,7 +92,7 @@ export function SyncStatusDialog({ open, onOpenChange }: { open: boolean; onOpen
         </p>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          {needsAuth && (
+          {(needsAuth || (phase === 'error' && problem === 'forbidden')) && (
             <Button onClick={reconnectGoogle}>
               <LogIn className="h-4 w-4" />
               {authFailure?.reason === 'mismatch' ? 'Doğru hesabı seç' : 'Google ile yeniden bağlan'}
@@ -108,12 +112,17 @@ export function SyncStatusDialog({ open, onOpenChange }: { open: boolean; onOpen
           )}
           {!needsAuth && phase !== 'offline' && (
             <Button
-              variant={phase === 'error' && problem !== 'outdated' && problem !== 'storageFull' ? 'primary' : 'outline'}
+              variant={phase === 'error' && problem !== 'outdated' && problem !== 'storageFull' && problem !== 'forbidden' ? 'primary' : 'outline'}
               onClick={() => void run('retry', () => syncNow({ manual: true }))}
               loading={busy === 'retry' || phase === 'syncing'}
               disabled={busy !== null || phase === 'syncing'}
             >
               <RefreshCw className="h-4 w-4" /> Şimdi tekrar dene
+            </Button>
+          )}
+          {phase === 'error' && problem !== 'forbidden' && (
+            <Button variant="outline" onClick={reconnectGoogle}>
+              <LogIn className="h-4 w-4" /> Google ile yeniden bağlan
             </Button>
           )}
           {phase === 'error' && (
